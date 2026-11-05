@@ -52,9 +52,27 @@ guarantees, how each guarantee is enforced, and how to report a problem.
 - **Test isolation.** Every test runs on its own temporary database, so the test suite can never
   read or modify real user data.
 
+## Controls implemented (Milestone 4: HashLab)
+
+- **Explicit consent for intensive work.** Any run allowed to use a CPU core for more than 2 s
+  (configurable), and every benchmark, is refused with `403 permission_required` unless that request
+  carries `consent: true`. The UI only sends it after an acknowledgement dialog that states the
+  impact. Consent is recorded on the run and in the activity log.
+- **Hard limits:** at most 32 difficulty bits and 60 s per run (configurable, with validated
+  maxima), and one run at a time (409). Unknown request fields are rejected.
+- **Isolation.**
+  - Work runs in one spawned worker process at reduced priority (`nice 10`), never on the API's
+    event loop.
+  - Cancellation takes effect within about 0.3 s.
+  - The worker is idle (0 CPU) when no run is active. Nothing starts at boot, and runs interrupted
+    by a crash are marked failed rather than resumed.
+- **No network effect.** Simulated hashes are never submitted anywhere. There is no pool or stratum
+  client, and every response is labelled `simulated: true`.
+- **Failure containment.** A worker crash fails only that run, with a generic message; details stay
+  in the server log. The server stays healthy.
+
 ## Planned controls
 
-- M4: simulator limits and consent gate (ADR 0002).
 - M6: outbound host allowlist, timeouts and circuit breakers (ADR 0003).
 - M8: LLM token budgets, rate limits, grounded prompts, advisory-only agent (ADR 0004).
 - M9: API rate limiting, an optional local API token for remote mode, dependency and secret

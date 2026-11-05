@@ -6,6 +6,8 @@ import { ProvenanceBadge } from "@/components/ui/ProvenanceBadge";
 import { useModules } from "@/hooks/useSystem";
 import type { ModuleKey } from "@/types/api";
 
+import { MiningSimulationSlot } from "./MiningSimulationSlot";
+
 interface Slot {
   key: ModuleKey;
   title: string;
@@ -59,6 +61,9 @@ export function ModuleSlots() {
         {SLOTS.map((slot) => {
           const module = modules?.find((entry) => entry.key === slot.key);
           const Icon = slot.icon;
+          if (slot.key === "hashlab" && module?.status === "online") {
+            return <MiningSimulationSlot key={slot.key} />;
+          }
           return (
             <Panel
               key={slot.key}

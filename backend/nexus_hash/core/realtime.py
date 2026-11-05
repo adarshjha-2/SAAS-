@@ -36,7 +36,7 @@ class Topic(StrEnum):
 
     SYSTEM = "system"  # Milestone 1: heartbeat / uptime / connection count
     ACTIVITY = "activity"  # Milestone 3: persisted activity log entries (live)
-    HASHLAB = "hashlab"  # Milestone 4: simulation progress
+    HASHLAB = "hashlab"  # Milestone 4: simulation run progress (live)
     HARDWARE = "hardware"  # Milestone 5: telemetry samples
     NETWORK = "network"  # Milestone 6: network snapshots
     INTELLIGENCE = "intelligence"  # Milestone 8: recommendations / anomalies

@@ -49,7 +49,8 @@ MODULES: tuple[ModuleDescriptor, ...] = (
             "difficulty and simulated mining competitions. Never touches the Bitcoin network."
         ),
         milestone=4,
-        status=ModuleStatus.PLANNED,
+        status=ModuleStatus.ONLINE,
+        api_prefix="/api/v1/hashlab",
     ),
     ModuleDescriptor(
         key="hardware",

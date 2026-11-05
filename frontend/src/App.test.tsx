@@ -1,13 +1,8 @@
-import { QueryClient } from "@tanstack/react-query";
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { createMemoryRouter, RouterProvider } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { AppProviders } from "@/app/AppProviders";
-import { ActivityLog } from "@/lib/activity";
-import { APP_TOPICS, RealtimeConnection } from "@/lib/realtime";
-import { routes } from "@/routes";
+import { APP_TOPICS } from "@/lib/realtime";
 import {
   activityFixture,
   backendFetch,
@@ -17,55 +12,7 @@ import {
   serverEntry,
   urlOf,
 } from "@/test/fakes";
-
-const HEARTBEAT = {
-  kind: "event",
-  topic: "system",
-  type: "heartbeat",
-  ts: "2026-11-05T00:00:00Z",
-  data: { status: "ok", version: "0.1.0", uptime_seconds: 3_725, server_time: "", connections: 1 },
-};
-
-function renderApp(path = "/", { backoffMs = 60_000 }: { backoffMs?: number } = {}) {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  let clock = 1_000;
-  const connection = new RealtimeConnection({
-    url: "ws://test/ws/v1",
-    topics: APP_TOPICS, // exactly what production subscribes to
-    createSocket: FakeSocket.factory,
-    backoff: () => backoffMs,
-    pingIntervalMs: 60_000, // one ping on open; no interval noise during a test
-    monotonicNow: () => clock,
-  });
-  const activityLog = new ActivityLog();
-  const router = createMemoryRouter(routes, { initialEntries: [path] });
-  render(
-    <AppProviders queryClient={queryClient} connection={connection} activityLog={activityLog}>
-      <RouterProvider router={router} />
-    </AppProviders>,
-  );
-  return {
-    connection,
-    router,
-    queryClient,
-    activityLog,
-    advanceClock: (ms: number) => {
-      clock += ms;
-    },
-  };
-}
-
-/** Open the fake socket, answer the first ping after `rttMs`, and deliver a heartbeat. */
-function goLive(advanceClock: (ms: number) => void, rttMs = 12) {
-  const socket = FakeSocket.latest();
-  act(() => {
-    socket.open();
-    advanceClock(rttMs);
-    socket.receive({ kind: "pong", id: "p1", ts: "now" });
-    socket.receive(HEARTBEAT);
-  });
-  return socket;
-}
+import { goLive, renderApp } from "@/test/renderApp";
 
 // Pages are code-split, so the shell renders once the route chunk resolves.
 const primaryNav = () => screen.findByRole("navigation", { name: "Primary" });
@@ -83,7 +30,7 @@ describe("Nexus Command dashboard", () => {
     expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent("Command Center");
     expect(await screen.findByText("API online")).toBeInTheDocument();
     expect(await statusTiles().findByText("OFFLINE MODE")).toBeInTheDocument();
-    expect(await statusTiles().findByText("1 / 7")).toBeInTheDocument();
+    expect(await statusTiles().findByText("2 / 7")).toBeInTheDocument();
     for (const disclaimer of infoFixture.disclaimers) {
       expect(screen.getByText(disclaimer)).toBeInTheDocument();
     }
@@ -137,10 +84,12 @@ describe("Nexus Command dashboard", () => {
     renderApp("/");
     const section = within(await screen.findByRole("region", { name: "Module intelligence" }));
     expect(await section.findByText("Arrives in Milestone 5")).toBeInTheDocument();
-    expect(section.getByText("Arrives in Milestone 4")).toBeInTheDocument();
     expect(section.getByText("Arrives in Milestone 6")).toBeInTheDocument();
     expect(section.getByText("Arrives in Milestone 8")).toBeInTheDocument();
-    expect(section.getAllByText("Planned")).toHaveLength(4);
+    expect(section.getAllByText("Planned")).toHaveLength(3);
+    // HashLab shipped, so its panel shows real (here: no) runs instead of a placeholder.
+    expect(await section.findByText("No simulation runs yet")).toBeInTheDocument();
+    expect(section.queryByText("Arrives in Milestone 4")).not.toBeInTheDocument();
   });
 
   it("lists every module in the primary navigation with its status", async () => {
@@ -148,9 +97,10 @@ describe("Nexus Command dashboard", () => {
     renderApp("/");
     const nav = await primaryNav();
     expect(within(nav).getAllByRole("link")).toHaveLength(7);
-    expect(await within(nav).findByText("M4")).toBeInTheDocument();
+    expect(await within(nav).findByText("M5")).toBeInTheDocument();
     // Online modules show no milestone marker.
     expect(within(nav).queryByText("M2")).not.toBeInTheDocument();
+    expect(within(nav).queryByText("M4")).not.toBeInTheDocument();
     expect(within(nav).getByRole("link", { name: /NEXUS CORE/ })).toHaveAttribute("href", "/core");
   });
 
@@ -215,9 +165,11 @@ describe("Nexus Command dashboard", () => {
 describe("routing", () => {
   it("renders a planned module honestly, without fake metrics", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(backendFetch());
-    renderApp("/hashlab");
-    expect(await screen.findByRole("heading", { level: 1, name: "HashLab" })).toBeInTheDocument();
-    expect(await screen.findAllByText("Milestone 4")).toHaveLength(2);
+    renderApp("/hardware");
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Hardware Intelligence" }),
+    ).toBeInTheDocument();
+    expect(await screen.findAllByText("Milestone 5")).toHaveLength(2);
     expect(screen.getByText(/never shows placeholder figures/)).toBeInTheDocument();
   });
 
@@ -263,7 +215,7 @@ describe("server activity", () => {
     const socket = goLive(advanceClock);
     expect(JSON.parse(socket.sent[0] ?? "{}")).toEqual({
       action: "subscribe",
-      topics: ["system", "activity"],
+      topics: APP_TOPICS,
     });
 
     act(() => {

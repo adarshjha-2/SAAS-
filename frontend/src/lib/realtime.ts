@@ -31,7 +31,7 @@ export const INITIAL_SNAPSHOT: RealtimeSnapshot = {
 };
 
 /** Topics every tab subscribes to; module pages add their own as they ship. */
-export const APP_TOPICS: readonly Topic[] = ["system", "activity"];
+export const APP_TOPICS: readonly Topic[] = ["system", "activity", "hashlab"];
 
 const DEFAULT_PING_INTERVAL_MS = 5_000;
 const MAX_PENDING_PINGS = 8;

@@ -1,3 +1,4 @@
+import type { HashLabLimits, HeaderPreset, JobView } from "@/types/hashlab";
 import type {
   ActivityPage,
   HealthResponse,
@@ -107,7 +108,7 @@ export const modulesFixture: ModuleDescriptor[] = [
   name: name as string,
   summary: `${name as string} summary.`,
   milestone: milestone as number,
-  status: key === "command" ? ("online" as const) : ("planned" as const),
+  status: key === "command" || key === "hashlab" ? ("online" as const) : ("planned" as const),
   api_prefix: null,
 }));
 
@@ -142,6 +143,54 @@ export function urlOf(input: RequestInfo | URL): string {
   return typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
 }
 
+export const limitsFixture: HashLabLimits = {
+  max_difficulty_bits: 32,
+  max_job_seconds: 60,
+  consent_threshold_seconds: 2,
+  nonce_space: 2 ** 32,
+  worker_processes: 1,
+};
+
+export const genesisPreset: HeaderPreset = {
+  key: "genesis",
+  name: "Genesis block (height 0)",
+  description: "The first Bitcoin block.",
+  header: {
+    version: 1,
+    prev_block_hash: "0".repeat(64),
+    merkle_root: "4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b",
+    timestamp: 1_231_006_505,
+    bits: 0x1d00ffff,
+    nonce: 2_083_236_893,
+  },
+  block_hash: "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f",
+};
+
+export function jobFixture(overrides: Partial<JobView> = {}): JobView {
+  return {
+    simulated: true,
+    id: "a".repeat(32),
+    kind: "mine",
+    status: "running",
+    difficulty_bits: 20,
+    expected_attempts: 2 ** 20,
+    max_seconds: 2,
+    consent: false,
+    attempts: 524_288,
+    elapsed_seconds: 0.4,
+    hash_rate_hs: 1_310_720,
+    best_hash: "00000a" + "f".repeat(58),
+    best_zero_bits: 20,
+    found_nonce: null,
+    found_hash: null,
+    error: null,
+    created_at: "2026-11-05T12:00:00Z",
+    started_at: "2026-11-05T12:00:00Z",
+    finished_at: null,
+    ...overrides,
+  };
+}
+
 export function jsonResponse(body: unknown, status = 200, headers: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -156,6 +205,9 @@ export function backendFetch(overrides: Partial<Record<string, () => Response>> 
     "/api/v1/system/info": () => jsonResponse(infoFixture),
     "/api/v1/system/modules": () => jsonResponse(modulesFixture),
     "/api/v1/activity": () => jsonResponse(activityFixture),
+    "/api/v1/hashlab/limits": () => jsonResponse(limitsFixture),
+    "/api/v1/hashlab/presets": () => jsonResponse([genesisPreset]),
+    "/api/v1/hashlab/jobs": () => jsonResponse([]),
   };
   return (input: RequestInfo | URL): Promise<Response> => {
     const path = new URL(urlOf(input), "http://localhost").pathname;

@@ -88,6 +88,12 @@ class Settings(BaseSettings):
     activity_max_entries: int = Field(default=50_000, ge=100, le=5_000_000)
     retention_interval_seconds: float = Field(default=3_600.0, ge=0.05, le=86_400.0)
 
+    # --- HashLab (ADR 0002: workload safety) --------------------------------
+    hashlab_max_difficulty_bits: int = Field(default=32, ge=8, le=40)
+    hashlab_max_job_seconds: float = Field(default=60.0, ge=1.0, le=600.0)
+    # Jobs that may use one CPU core for longer than this need explicit consent.
+    hashlab_consent_threshold_seconds: float = Field(default=2.0, ge=0.0, le=60.0)
+
     # --- Secrets (backend only; never sent to the frontend) ----------------
     anthropic_api_key: SecretStr | None = Field(
         default=None,

@@ -170,7 +170,7 @@ client measures round-trip latency exactly, with no FIFO guessing and no clock-s
 |---|---|---|
 | `system` | heartbeat: uptime, version, connection count | **1 (live)** |
 | `activity` | persisted activity log entries | **3 (live)** |
-| `hashlab` | simulation job progress and results | 4 |
+| `hashlab` | simulation run progress and results | **4 (live)** |
 | `hardware` | telemetry samples | 5 |
 | `network` | network snapshots | 6 |
 | `intelligence` | recommendations and anomalies | 8 |
@@ -263,28 +263,79 @@ Routes are code-split with React Router `lazy`. Recharts ships only in the dashb
 Status values come from `core/catalog.py`. Designs below are the plan; each milestone refines its
 own section when it lands.
 
-### 5.1 HashLab: proof-of-work simulator (M4)
+### 5.1 HashLab: proof-of-work simulator (M4, **online**)
 
-* **Real primitives.** The 80-byte Bitcoin block header is version, previous hash, merkle root,
-  time, bits and nonce, serialised little-endian. Hashing is double SHA-256 via `hashlib`, and the
-  compact `bits` field expands to a 256-bit target. The serialiser is verified against the genesis
-  block header, so the test vector proves the implementation is real.
-* **Educational difficulty.** Difficulty is expressed as leading zero bits (for example 8 to 28),
-  so a CPU can find blocks in seconds. The UI shows how each extra bit doubles the expected work,
-  and contrasts this with live network difficulty (M6).
-* **Safe execution.**
-  - Jobs run in a separate worker process (`ProcessPoolExecutor`), outside the GIL and off the
-    event loop.
-  - Hard caps apply to difficulty bits, attempts, wall time and concurrent jobs (default 1).
-  - Jobs are cancellable and stream progress on the `hashlab` topic.
-  - Sustained "benchmark" runs return `permission_required` unless the request carries an explicit
-    consent flag that the user confirmed in the UI.
-* **Mining competition.** Simulated miners with configurable hash-power shares compete. Block
-  discovery follows a Poisson process in *simulated time*, so it costs negligible CPU while showing
-  real variance and luck.
-* **Labelling.** Every result carries `simulated: true`, and the UI badges it "SIMULATED — not
-  Bitcoin network mining". A pure-Python CPU hash rate (on the order of 10⁵–10⁶ H/s per core) is
-  shown next to the network rate to make the gap concrete.
+Code lives in `nexus_hash/modules/hashlab/`:
+
+| File | Contents |
+|---|---|
+| `pow.py` | Primitives |
+| `worker.py` | Search code that runs in the subprocess |
+| `competition.py` | Poisson competition model |
+| `jobs.py` | Job manager |
+| `service.py` | Instant demos |
+| `router.py` | HTTP API |
+
+**Primitives (`pow.py`) are verified against the real chain.**
+
+* The 80-byte header serialisation uses little-endian integers, a signed `int32` version, and hashes
+  byte-reversed from their display form.
+* Hashing is double SHA-256. The compact `bits` field converts to a target and back, following
+  Bitcoin Core's rules: negative, zero-mantissa, zero and overflowing targets are rejected.
+* The genesis block and block 1 hash to their published block hashes, which proves the
+  implementation is real.
+
+**Instant demos** (synchronous, bounded by input size):
+
+| Endpoint | What it does |
+|---|---|
+| `POST /hashlab/sha256` | Hash text or hex, with the avalanche effect of flipping one bit |
+| `POST /hashlab/header` | Serialise a header, hash it, and check it against its target and difficulty |
+| `POST /hashlab/nonces` | Try at most 64 nonces |
+| `GET /hashlab/presets` | Real block headers to load |
+
+**Mining jobs** (`POST /hashlab/jobs`):
+
+* **Educational difficulty.** A hash passes when it has *at least N leading zero bits*, so the
+  expected work is 2^N attempts. A `benchmark` job uses an unreachable target and simply measures
+  hash rate.
+* **Execution.**
+  - One spawned worker process (`ProcessPoolExecutor`, spawn context, `os.nice(10)`).
+  - The search runs in adaptive chunks of about 0.25 s. Between chunks, the server checks for
+    cancellation and the wall-clock deadline and publishes progress on the `hashlab` topic.
+  - Measured: Stop takes effect in about 0.3 s, and the worker uses 0 CPU while idle.
+* **Midstate.** The first 64 header bytes never change between nonces, so their SHA-256 compression
+  is computed once and copied. This is the standard technique all miners use. Every candidate is
+  still fully double-hashed, and a test proves the results match plain hashing.
+* **Measured rate.** This pure-Python reference reaches about 1.0–1.3 MH/s on one core. That's
+  roughly 58 minutes for a single block at Bitcoin's minimum difficulty (2³² hashes), and the UI
+  shows this comparison.
+* **Lifecycle.**
+  - States: `queued → running → succeeded | exhausted | timed_out | cancelled | failed`.
+  - Every state change is persisted in `simulation_runs` (migration `0002`) and logged in the
+    activity log as user-initiated.
+  - Runs left unfinished by a crash are marked `failed` ("interrupted") at the next start.
+  - Shutdown cancels an active run and records it.
+
+**Safety:** ADR 0002 is enforced. See the admission table below and `SECURITY.md`.
+
+**Competition** (`POST /hashlab/competition`) is pure math in simulated time:
+
+* Each miner is a Poisson process with rate = its hash rate ÷ 2^bits. Inter-block times are
+  exponential, and winners are drawn in proportion to hash rate.
+* Results are reproducible with a seed, and statistical tests check them against theory: shares
+  within 5σ of the binomial expectation, and mean block time converging to its expected value.
+
+**Labelling:** every response carries `simulated: true`. The page shows a "Simulation only" notice
+and Simulated badges, and the dashboard's Mining simulation panel streams the live run.
+
+| Admission check | Result when it fails |
+|---|---|
+| `difficulty_bits` > `NEXUS_HASHLAB_MAX_DIFFICULTY_BITS` (default 32) | 422 `resource_limit_exceeded` |
+| `max_seconds` > `NEXUS_HASHLAB_MAX_JOB_SECONDS` (default 60) | 422 `resource_limit_exceeded` |
+| Benchmark, or `max_seconds` > `NEXUS_HASHLAB_CONSENT_THRESHOLD_SECONDS` (default 2), without `consent: true` | 403 `permission_required` (UI opens the consent dialog) |
+| Another run already active | 409 `conflict` |
+| Unknown request fields | 422 `validation_error` |
 
 ### 5.2 Hardware Intelligence (M5)
 

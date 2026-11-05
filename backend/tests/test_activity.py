@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from nexus_hash.core.realtime import RealtimeHub, Topic
 from nexus_hash.db.engine import create_engine, create_session_factory
-from nexus_hash.db.migrate import upgrade_to_head
+from nexus_hash.db.migrate import head_revision, upgrade_to_head
 from nexus_hash.main import create_app
 from nexus_hash.modules.activity.schemas import (
     ActivityActor,
@@ -235,7 +235,7 @@ def test_startup_records_real_events(client: TestClient) -> None:
     body = client.get("/api/v1/activity").json()
     messages = [item["message"] for item in body["items"]]
     assert messages[0] == "NEXUS HASH AI 0.1.0 started"
-    assert messages[1] == "Database schema migrated to revision 0001"
+    assert messages[1] == f"Database schema migrated to revision {head_revision()}"
     assert body["next_before_id"] is None
     started = body["items"][0]
     assert started["category"] == "system"
@@ -251,7 +251,7 @@ def test_restart_does_not_rerecord_migration(tmp_path: Path) -> None:
             pass
     with TestClient(create_app(settings)) as client:
         messages = [item["message"] for item in client.get("/api/v1/activity").json()["items"]]
-    assert messages.count("Database schema migrated to revision 0001") == 1
+    assert messages.count(f"Database schema migrated to revision {head_revision()}") == 1
     assert messages.count("NEXUS HASH AI stopping") == 2
     assert messages.count("NEXUS HASH AI 0.1.0 started") == 3
 

@@ -13,14 +13,14 @@ and an AI analyst called **NEXUS CORE**, all in one command-center interface.
 
 ## Status
 
-**Milestones 1–3 of 10 are complete.** The platform foundation, the design system, a live Nexus
-Command dashboard and SQLite persistence with a server activity log are in place. See
-[`docs/ROADMAP.md`](docs/ROADMAP.md).
+**Milestones 1–4 of 10 are complete.** The platform foundation, the design system, a live Nexus
+Command dashboard, SQLite persistence with a server activity log, and the HashLab proof-of-work
+simulator are in place. See [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 | Module | Milestone | Status |
 |---|---|---|
 | Nexus Command (dashboard) | 2 | **Online** |
-| HashLab (PoW simulator) | 4 | Planned |
+| HashLab (PoW simulator) | 4 | **Online** |
 | Hardware Intelligence | 5 | Planned |
 | Bitcoin Network Intelligence | 6 | Planned |
 | Profitability Intelligence | 7 | Planned |
@@ -84,7 +84,9 @@ Data lives in `backend/data/nexus_hash.db` (SQLite) by default. Change it with
 | `GET /api/v1/system/info` | Version, feature flags (e.g. `llm_configured`), limits, disclaimers |
 | `GET /api/v1/system/modules[/{key}]` | Module catalog and delivery status |
 | `GET /api/v1/activity` | Persisted activity log, newest first (`limit`, `before_id`, `level`, `category`) |
-| `WS /ws/v1` | Realtime stream: `system` and `activity` live, more topics per milestone |
+| `POST /api/v1/hashlab/sha256`, `/header`, `/nonces`, `/competition` | Instant proof-of-work demos (simulated) |
+| `POST /api/v1/hashlab/jobs` · `GET /jobs[/{id}]` · `POST /jobs/{id}/cancel` | Mining and benchmark runs (limits plus consent, see `SECURITY.md`) |
+| `WS /ws/v1` | Realtime stream: `system`, `activity` and `hashlab` live, more topics per milestone |
 
 Errors always use the envelope
 `{"error": {"code", "message", "request_id", "details?"}}`.

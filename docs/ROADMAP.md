@@ -9,8 +9,8 @@ moves to `online` only when its acceptance criteria are met and tested.
 | 1 | Project architecture & environment setup | ✅ Complete |
 | 2 | Frontend design system & command dashboard | ✅ Complete |
 | 3 | Backend persistence (SQLite) & activity log | ✅ Complete |
-| 4 | HashLab proof-of-work simulator | ⏭ Next |
-| 5 | Hardware Intelligence | Planned |
+| 4 | HashLab proof-of-work simulator | ✅ Complete |
+| 5 | Hardware Intelligence | ⏭ Next |
 | 6 | Bitcoin Network Intelligence | Planned |
 | 7 | Profitability Intelligence | Planned |
 | 8 | Nexus Intelligence + NEXUS CORE AI | Planned |
@@ -55,13 +55,19 @@ moves to `online` only when its acceptance criteria are met and tested.
 - Frontend: server entries merged into the dashboard feed (deduplicated, with backfill after
   reconnect) and a full `/activity` page with filters and pagination.
 
-### M4: HashLab
+### M4: HashLab ✅
 
-- Header serialisation and double SHA-256, verified against the Bitcoin genesis block.
-- Difficulty and target math, plus nonce search in an isolated worker process with hard limits and
-  cancellation.
-- Consent-gated benchmark. Poisson mining-competition simulation. Every output labelled
-  "simulated".
+- Header serialisation and double SHA-256, verified against the genesis block and block 1. Compact
+  `bits` ↔ target conversion follows Bitcoin Core's validity rules.
+- Instant demos: SHA-256 with the avalanche effect, a block-header lab, and a nonce explorer.
+- Mining and benchmark jobs:
+  - one spawned, low-priority worker process with adaptive 0.25 s chunks
+  - limits, the consent gate and one-at-a-time admission
+  - cancellation, live progress, persistence (`simulation_runs`) and activity audit
+  - crash recovery
+- Poisson mining competition in simulated time, reproducible with a seed and statistically tested.
+- HashLab page with the consent dialog, plus a live Mining simulation panel on the dashboard. Every
+  output is labelled simulated.
 
 ### M5: Hardware Intelligence
 
