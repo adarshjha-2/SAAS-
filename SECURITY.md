@@ -1,0 +1,54 @@
+# Security Policy — NEXUS HASH AI
+
+NEXUS HASH AI is a local-first research platform. It handles three sensitive things: your
+machine's telemetry, your compute and your API keys. This document lists what the platform
+guarantees, how each guarantee is enforced, and how to report a problem.
+
+## Non-negotiable guarantees
+
+| The platform never… | Enforcement |
+|---|---|
+| exposes API keys to the browser | Keys exist only in backend env as `SecretStr`. `/system/info` returns only `llm_configured: bool`. Only `VITE_*` variables reach the bundle, and none are secret. Tested. |
+| writes secrets to logs | `SecretRedactionFilter` scrubs configured secret values from every log record. Tested end to end. |
+| listens beyond your machine by accident | Loopback bind by default. Any other host fails startup unless `NEXUS_ALLOW_REMOTE_ACCESS=true`. Tested. |
+| starts intensive workloads silently | Consent gate plus hard limits plus isolated worker process (ADR 0002, enforced from M4). Nothing CPU-heavy runs at boot. |
+| mines on the real Bitcoin network, joins pools, or claims to bypass proof-of-work | HashLab is a labelled simulator. There is no pool or stratum client, and no network submission code. |
+| uses cloud compute, spends money or makes purchases | No such integrations exist. LLM calls happen only on explicit user requests. Paid infrastructure requires owner approval. |
+| runs hidden processes | All background tasks are named, listed in the app lifespan and cancelled on shutdown. |
+
+## Controls implemented (Milestone 1)
+
+- **Configuration:** typed, validated and immutable settings. Invalid configuration aborts startup
+  with a clear message. `.env` is git-ignored, and `.env.example` is validated by a test.
+- **Input validation:** Pydantic models on every endpoint and every WebSocket message.
+  Discriminated unions reject unknown actions and topics.
+- **Error handling:** a uniform error envelope. Internals are never returned: an unhandled
+  exception becomes a generic 500 with a request ID, and its details go only to server logs.
+  Validation errors do not echo input.
+- **HTTP hardening:**
+  - `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`
+  - strict `Content-Security-Policy` on API responses
+  - `Cache-Control: no-store`, COOP/CORP, restrictive `Permissions-Policy`
+  - no `Server` header
+- **CORS:** explicit allowlist, no credentials, and wildcards rejected by config validation.
+- **WebSocket:** `Origin` allowlist (prevents cross-site WebSocket hijacking), connection cap,
+  message size cap, text frames only, bounded per-client queues.
+- **Resource limits:** request body cap (413), including chunked bodies with no `Content-Length`.
+- **Supply chain:** lockfiles (`uv.lock`, `package-lock.json`) and `npm audit` in CI. A transitive
+  `minimatch` advisory (GHSA-g3hv-75wg-m249, dev-only lint toolchain) is pinned to the patched
+  release via npm `overrides`. Fonts are self-hosted, so no third-party CDN requests are made at
+  runtime.
+
+## Planned controls
+
+- M4: simulator limits and consent gate (ADR 0002).
+- M6: outbound host allowlist, timeouts and circuit breakers (ADR 0003).
+- M8: LLM token budgets, rate limits, grounded prompts, advisory-only agent (ADR 0004).
+- M9: API rate limiting, an optional local API token for remote mode, dependency and secret
+  scanning in CI, Playwright security smoke tests.
+
+## Reporting a vulnerability
+
+Please do not open a public issue. Email the maintainer (see the repository owner's GitHub
+profile) with steps to reproduce, the affected version (`nexus-hash --version`) and the request ID
+from any error response. You will get an acknowledgement within 72 hours.
