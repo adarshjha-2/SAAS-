@@ -70,7 +70,7 @@ def _dispatch(raw: str, client: RealtimeClient, hub: RealtimeHub) -> None:
     elif isinstance(parsed, UnsubscribeMessage):
         hub.unsubscribe(client, parsed.topics)
     elif isinstance(parsed, PingMessage):
-        client.offer(PongMessage())
+        client.offer(PongMessage(id=parsed.id))
 
 
 def _origin_allowed(origin: str | None, settings: Settings) -> bool:

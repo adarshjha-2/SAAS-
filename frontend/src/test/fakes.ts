@@ -100,7 +100,7 @@ export const modulesFixture: ModuleDescriptor[] = [
   name: name as string,
   summary: `${name as string} summary.`,
   milestone: milestone as number,
-  status: "planned" as const,
+  status: key === "command" ? ("online" as const) : ("planned" as const),
   api_prefix: null,
 }));
 

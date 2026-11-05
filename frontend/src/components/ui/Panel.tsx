@@ -23,13 +23,13 @@ export function Panel({ title, eyebrow, actions, className, children }: PanelPro
     >
       {(title !== undefined || actions !== undefined) && (
         <header className="flex items-start justify-between gap-4 border-b border-edge/70 px-5 py-4">
-          <div>
+          <div className="min-w-0">
             {eyebrow && (
               <p className="font-mono text-[10px] tracking-[0.2em] text-ink-faint uppercase">{eyebrow}</p>
             )}
             {title && <h2 className="font-display text-sm font-semibold tracking-wide text-ink">{title}</h2>}
           </div>
-          {actions}
+          {actions && <div className="shrink-0">{actions}</div>}
         </header>
       )}
       <div className="p-5">{children}</div>

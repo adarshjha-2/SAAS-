@@ -54,7 +54,24 @@ def test_ping_pong(client: TestClient) -> None:
     with client.websocket_connect(WS_PATH) as ws:
         ws.receive_json()
         ws.send_json({"action": "ping"})
-        assert ws.receive_json()["kind"] == "pong"
+        pong = ws.receive_json()
+        assert pong["kind"] == "pong"
+        assert pong["id"] is None
+
+
+def test_ping_id_is_echoed_for_latency_measurement(client: TestClient) -> None:
+    with client.websocket_connect(WS_PATH) as ws:
+        ws.receive_json()
+        ws.send_json({"action": "ping", "id": "rtt-42"})
+        assert ws.receive_json()["id"] == "rtt-42"
+
+
+@pytest.mark.parametrize("bad_id", ["x" * 65, "has space", "<script>", ""])
+def test_invalid_ping_ids_rejected(client: TestClient, bad_id: str) -> None:
+    with client.websocket_connect(WS_PATH) as ws:
+        ws.receive_json()
+        ws.send_json({"action": "ping", "id": bad_id})
+        assert ws.receive_json()["code"] == "invalid_message"
 
 
 @pytest.mark.parametrize(

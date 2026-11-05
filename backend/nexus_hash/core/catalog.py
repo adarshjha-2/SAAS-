@@ -39,7 +39,7 @@ MODULES: tuple[ModuleDescriptor, ...] = (
             "analytics charts, AI recommendations and the activity log."
         ),
         milestone=2,
-        status=ModuleStatus.PLANNED,
+        status=ModuleStatus.ONLINE,
     ),
     ModuleDescriptor(
         key="hashlab",

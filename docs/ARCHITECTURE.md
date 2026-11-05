@@ -159,8 +159,11 @@ The browser opens one multiplexed connection and subscribes to topics:
 
 | Direction | Message |
 |---|---|
-| client → server | `{"action":"subscribe","topics":["system","network"]}` · `{"action":"unsubscribe",…}` · `{"action":"ping"}` |
-| server → client | `welcome` · `ack` · `pong` · `error` · `event {topic, type, ts, data}` |
+| client → server | `{"action":"subscribe","topics":["system","network"]}` · `{"action":"unsubscribe",…}` · `{"action":"ping","id":"p7"}` |
+| server → client | `welcome` · `ack` · `pong {id}` · `error` · `event {topic, type, ts, data}` |
+
+The optional ping `id` (at most 64 characters from `[A-Za-z0-9_-]`) is echoed in the pong, so the
+client measures round-trip latency exactly, with no FIFO guessing and no clock-skew assumptions.
 
 | Topic | Publisher | Milestone |
 |---|---|---|
@@ -185,6 +188,72 @@ Guarantees:
 
 The frontend's `RealtimeConnection` is framework-agnostic: it reconnects with exponential backoff
 and jitter (1 s → 30 s), and React binds to it through `useSyncExternalStore`.
+
+---
+
+## 4b. Frontend architecture
+
+### State and data flow
+
+| Concern | Mechanism |
+|---|---|
+| Request/response data (health, info, catalog; module APIs later) | TanStack Query hooks in `hooks/`. Retries only transient failures (offline, timeout, 5xx). |
+| Push data | One `RealtimeConnection` per tab, exposed via `useRealtime()`. Latest event per topic, plus ping round-trip history. |
+| Client-side telemetry | `SampleStore` ring buffers (e.g. `apiLatency`), and `resampleSeries()` to align independently-timed series onto shared buckets. |
+| Activity log | `ActivityLog` store (bounded, newest first). `useActivityRecorder()` records real, observed transitions: stream connect/drop/restore and backend online/degraded/unreachable/recovered. In M3, server-persisted entries join with `source: "server"`. |
+| App-wide providers | `AppProviders`, shared by `main.tsx` and tests (each store is injectable). |
+
+All stores are framework-agnostic classes with `subscribe` / `getSnapshot` methods. React binds
+through `useSyncExternalStore`, and tests drive them directly.
+
+### Truthfulness rules (enforced and tested)
+
+* **No stale-as-live.** React Query keeps the last data after a failed refetch, and the stream keeps
+  its last event after a drop. So every "live" figure is gated on *current* health. During an
+  outage, tiles read OFFLINE / RECONNECTING / "Unavailable" (regression test in `App.test.tsx`).
+* **Gaps stay gaps.** `resampleSeries` reports a series' latest measurement only while it is at most
+  `maxAgeMs` old; otherwise the value is `null` and the chart draws a break. It never interpolates
+  across an outage.
+* **Provenance on every figure.** `ProvenanceBadge`: Live · This session · Simulated · Estimate ·
+  Stale · Offline · Planned.
+* **No placeholder metrics.** A module without data shows an `EmptyState` naming the milestone that
+  delivers it.
+
+### Design system (`components/ui`, `components/charts`)
+
+| Component | Purpose |
+|---|---|
+| `Panel` | The base surface (title, eyebrow, actions) |
+| `StatTile` + `Sparkline` | Headline metric. A 12-point trend in recessive ink, with the latest segment in the accent. |
+| `TimeSeriesChart` | Recharts area/line chart following the data-viz conventions below, with a built-in table view |
+| `ProvenanceBadge`, `StatusPill` / `StatusDot` | Data origin and status: text plus colour, never colour alone |
+| `EmptyState` | Explains what will appear and why it isn't there yet |
+| `SegmentedControl` | Mutually exclusive views (Chart / Table) |
+| `ConsentDialog` | Explicit per-action permission for intensive workloads (ADR 0002). Confirm stays disabled until acknowledged. Focus trap, Escape to cancel, focus restored on close. |
+
+### Data-visualisation conventions
+
+* **Series palette** (fixed order, never cycled): `--color-series-1..4` =
+  `#00a3bb` · `#e3611c` · `#9085e9` · `#d55181`.
+  - Validated with the palette checker against the dark panel surface `#0a0d14`: lightness band,
+    chroma floor, adjacent-pair CVD separation (worst ΔE 16.0), normal-vision floor and ≥ 3:1
+    contrast all pass.
+  - The neon brand accents (`#00e1ff`, `#ff6a13`) failed the lightness band for data marks, so they
+    stay UI chrome only.
+  - Status colours (ok / warn / fault) are reserved and never used as series colours.
+* **Marks and axes.** One y-axis per chart, never dual-axis. 2 px lines with a 10% area wash, a
+  solid hairline grid, and end markers with a 2 px surface ring. Clean y-ticks come from
+  `niceTicks` (1 / 2 / 2.5 / 5 × 10ⁿ).
+* **Reading values.** A legend is shown for two or more series and carries each series' latest
+  value. A crosshair tooltip lists every series at the hovered time, value first. A table view twin
+  means no value is reachable only by hovering.
+* **Text colour.** Text always uses ink tokens. Series identity comes from a line key beside the
+  text.
+
+### Performance
+
+Routes are code-split with React Router `lazy`. Recharts ships only in the dashboard chunk (about
+113 KB gzipped), and module pages load a chunk of about 1 KB.
 
 ---
 
@@ -281,11 +350,25 @@ Every recommendation cites the data it was derived from.
   mode.
 * **Budgets.** Per-request token caps, rate limiting and streamed responses.
 
-### 5.7 Nexus Command: dashboard (M2)
+### 5.7 Nexus Command: dashboard (M2, **online**)
 
-The dashboard composes the module topics into one command view: status tiles, Recharts time series
-(hardware, simulation hash rate, network), recommendations and the activity log. Each panel owns its
-loading, empty, stale and error states.
+The dashboard composes live platform state into one command view:
+
+* **Status tiles:**
+  - Backend health
+  - Uptime (interpolated locally between heartbeats)
+  - Realtime link: measured round-trip, sparkline, connection count
+  - Modules online
+  - NEXUS CORE LLM mode
+* **Platform telemetry:** latency between this browser and the backend over the last 10 minutes.
+  WebSocket ping/pong runs every 5 s and API health checks every 10 s, resampled into 5 s buckets.
+* **Activity log:** this session's observed events.
+* **Module intelligence:** reserved panels for Hardware (M5), Mining simulation (M4), Bitcoin
+  network (M6) and AI recommendations (M8). Each shows an honest empty state until its module ships
+  and then binds to that module's realtime topic.
+* **Roadmap, safety guarantees and resource limits.**
+
+Each panel owns its loading, empty, stale and error states.
 
 ---
 

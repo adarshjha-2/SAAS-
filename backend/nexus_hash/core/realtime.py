@@ -57,6 +57,9 @@ class UnsubscribeMessage(BaseModel):
 
 class PingMessage(BaseModel):
     action: Literal["ping"]
+    # Optional correlation id, echoed in the pong so clients can measure
+    # round-trip latency precisely.
+    id: str | None = Field(default=None, max_length=64, pattern=r"^[A-Za-z0-9_\-]+$")
 
 
 ClientMessage = Annotated[
@@ -88,6 +91,7 @@ class AckMessage(BaseModel):
 
 class PongMessage(BaseModel):
     kind: Literal["pong"] = "pong"
+    id: str | None = None
     ts: datetime = Field(default_factory=_now)
 
 

@@ -2,21 +2,34 @@ import type { RouteObject } from "react-router";
 
 import { AppShell } from "@/components/layout/AppShell";
 import { NAV_ITEMS } from "@/config/navigation";
-import { CommandPage } from "@/pages/CommandPage";
-import { ModulePage } from "@/pages/ModulePage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 import { RouteErrorPage } from "@/pages/RouteErrorPage";
+import { RouteLoading } from "@/pages/RouteLoading";
 
+/**
+ * Pages are code-split: each route's chunk (and heavy dependencies such as
+ * Recharts on the dashboard) loads only when the route is visited.
+ */
 export const routes: RouteObject[] = [
   {
     path: "/",
     element: <AppShell />,
     errorElement: <RouteErrorPage />,
+    HydrateFallback: RouteLoading,
     children: [
-      { index: true, element: <CommandPage /> },
-      ...NAV_ITEMS.filter((item) => item.path !== "/").map((item) => ({
+      {
+        index: true,
+        lazy: async () => {
+          const { CommandPage } = await import("@/pages/CommandPage");
+          return { Component: CommandPage };
+        },
+      },
+      ...NAV_ITEMS.filter((item) => item.path !== "/").map((item): RouteObject => ({
         path: item.path.slice(1),
-        element: <ModulePage moduleKey={item.key} />,
+        lazy: async () => {
+          const { ModulePage } = await import("@/pages/ModulePage");
+          return { element: <ModulePage moduleKey={item.key} /> };
+        },
       })),
       { path: "*", element: <NotFoundPage /> },
     ],

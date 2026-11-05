@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { apiGet } from "@/lib/api";
+import { apiLatency } from "@/lib/apiLatency";
 import type { HealthResponse, ModuleDescriptor, SystemInfo } from "@/types/api";
 
 export const systemKeys = {
@@ -12,7 +13,12 @@ export const systemKeys = {
 export function useHealth() {
   return useQuery({
     queryKey: systemKeys.health,
-    queryFn: ({ signal }) => apiGet<HealthResponse>("/api/v1/system/health", { signal }),
+    queryFn: async ({ signal }) => {
+      const started = performance.now();
+      const health = await apiGet<HealthResponse>("/api/v1/system/health", { signal });
+      apiLatency.record(performance.now() - started);
+      return health;
+    },
     refetchInterval: 10_000,
   });
 }

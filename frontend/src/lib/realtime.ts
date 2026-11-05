@@ -1,6 +1,7 @@
 import type { RealtimeEvent, ServerMessage, Topic } from "@/types/api";
 
 import { API_BASE_URL } from "./api";
+import { appendSample, type Sample } from "./telemetry";
 
 export type ConnectionStatus = "idle" | "connecting" | "open" | "reconnecting" | "closed";
 
@@ -13,6 +14,10 @@ export interface RealtimeSnapshot {
   reconnectAttempt: number;
   lastMessageAt: number | null;
   events: Partial<Record<Topic, ReceivedEvent>>;
+  /** Most recent ping round-trip in ms; null while disconnected. */
+  latencyMs: number | null;
+  /** Round-trip history (wall-clock timestamps), kept across reconnects. */
+  rttSamples: readonly Sample[];
 }
 
 export const INITIAL_SNAPSHOT: RealtimeSnapshot = {
@@ -21,7 +26,12 @@ export const INITIAL_SNAPSHOT: RealtimeSnapshot = {
   reconnectAttempt: 0,
   lastMessageAt: null,
   events: {},
+  latencyMs: null,
+  rttSamples: [],
 };
+
+const DEFAULT_PING_INTERVAL_MS = 5_000;
+const MAX_PENDING_PINGS = 8;
 
 /** Exponential backoff with jitter: 1s, 2s, 4s ... capped at 30s, scaled by 50-100%. */
 export function computeBackoff(
@@ -69,6 +79,10 @@ export interface RealtimeConnectionOptions {
   topics: Topic[];
   createSocket?: WebSocketFactory;
   backoff?: (attempt: number) => number;
+  /** How often to measure round-trip latency while open; 0 disables pinging. */
+  pingIntervalMs?: number;
+  /** Monotonic clock for latency measurement (defaults to `performance.now`). */
+  monotonicNow?: () => number;
 }
 
 /**
@@ -82,18 +96,32 @@ export class RealtimeConnection {
   private readonly topics: Topic[];
   private readonly createSocket: WebSocketFactory;
   private readonly backoff: (attempt: number) => number;
+  private readonly pingIntervalMs: number;
+  private readonly monotonicNow: () => number;
 
   private socket: WebSocket | null = null;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
+  private pingTimer: ReturnType<typeof setInterval> | null = null;
+  private readonly pendingPings = new Map<string, number>();
+  private pingSequence = 0;
   private running = false;
   private snapshot: RealtimeSnapshot = INITIAL_SNAPSHOT;
   private readonly listeners = new Set<() => void>();
 
-  constructor({ url, topics, createSocket, backoff }: RealtimeConnectionOptions) {
+  constructor({
+    url,
+    topics,
+    createSocket,
+    backoff,
+    pingIntervalMs,
+    monotonicNow,
+  }: RealtimeConnectionOptions) {
     this.url = url;
     this.topics = topics;
     this.createSocket = createSocket ?? ((target) => new WebSocket(target));
     this.backoff = backoff ?? ((attempt) => computeBackoff(attempt));
+    this.pingIntervalMs = pingIntervalMs ?? DEFAULT_PING_INTERVAL_MS;
+    this.monotonicNow = monotonicNow ?? (() => performance.now());
   }
 
   readonly subscribe = (listener: () => void): (() => void) => {
@@ -113,6 +141,7 @@ export class RealtimeConnection {
     this.running = false;
     if (this.retryTimer !== null) clearTimeout(this.retryTimer);
     this.retryTimer = null;
+    this.stopPinging();
     const socket = this.socket;
     this.socket = null;
     if (socket) {
@@ -126,7 +155,7 @@ export class RealtimeConnection {
         socket.close();
       }
     }
-    this.update({ status: "closed", clientId: null });
+    this.update({ status: "closed", clientId: null, latencyMs: null });
   }
 
   private update(patch: Partial<RealtimeSnapshot>): void {
@@ -152,10 +181,12 @@ export class RealtimeConnection {
       if (this.topics.length > 0) {
         socket.send(JSON.stringify({ action: "subscribe", topics: this.topics }));
       }
+      this.startPinging(socket);
     };
     socket.onmessage = (message: MessageEvent) => this.handleMessage(message.data);
     socket.onclose = () => {
       if (this.socket === socket) this.socket = null;
+      this.stopPinging();
       this.scheduleReconnect();
     };
     // Errors are always followed by `close`, which drives reconnection.
@@ -176,6 +207,9 @@ export class RealtimeConnection {
           events: { ...this.snapshot.events, [message.topic]: { ...message, receivedAt: now } },
         });
         break;
+      case "pong":
+        this.recordPong(message.id, now);
+        break;
       case "error":
         console.warn(`[realtime] server rejected a message: ${message.code}`);
         this.update({ lastMessageAt: now });
@@ -185,10 +219,54 @@ export class RealtimeConnection {
     }
   }
 
+  private startPinging(socket: WebSocket): void {
+    this.stopPinging();
+    if (this.pingIntervalMs <= 0) return;
+    const ping = () => {
+      this.pingSequence += 1;
+      const id = `p${this.pingSequence}`;
+      this.pendingPings.set(id, this.monotonicNow());
+      // Bound memory if pongs never arrive: forget the oldest outstanding ping.
+      if (this.pendingPings.size > MAX_PENDING_PINGS) {
+        const oldest = this.pendingPings.keys().next().value;
+        if (oldest !== undefined) this.pendingPings.delete(oldest);
+      }
+      socket.send(JSON.stringify({ action: "ping", id }));
+    };
+    ping();
+    this.pingTimer = setInterval(ping, this.pingIntervalMs);
+  }
+
+  private stopPinging(): void {
+    if (this.pingTimer !== null) clearInterval(this.pingTimer);
+    this.pingTimer = null;
+    this.pendingPings.clear();
+  }
+
+  private recordPong(id: string | null, receivedAt: number): void {
+    const sentAt = id === null ? undefined : this.pendingPings.get(id);
+    if (id === null || sentAt === undefined) {
+      this.update({ lastMessageAt: receivedAt });
+      return;
+    }
+    this.pendingPings.delete(id);
+    const rtt = Math.max(0, this.monotonicNow() - sentAt);
+    this.update({
+      lastMessageAt: receivedAt,
+      latencyMs: rtt,
+      rttSamples: appendSample(this.snapshot.rttSamples, { t: receivedAt, value: rtt }),
+    });
+  }
+
   private scheduleReconnect(): void {
     if (!this.running) return;
     const attempt = this.snapshot.reconnectAttempt;
-    this.update({ status: "reconnecting", clientId: null, reconnectAttempt: attempt + 1 });
+    this.update({
+      status: "reconnecting",
+      clientId: null,
+      reconnectAttempt: attempt + 1,
+      latencyMs: null,
+    });
     this.retryTimer = setTimeout(() => {
       this.retryTimer = null;
       if (this.running) this.connect();

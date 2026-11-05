@@ -2,6 +2,7 @@ import { X } from "lucide-react";
 import { useState } from "react";
 import { Outlet } from "react-router";
 
+import { useActivityRecorder } from "@/hooks/useActivityRecorder";
 import { cn } from "@/lib/format";
 
 import { Sidebar } from "./Sidebar";
@@ -9,9 +10,16 @@ import { TopBar } from "./TopBar";
 
 export function AppShell() {
   const [menuOpen, setMenuOpen] = useState(false);
+  useActivityRecorder();
 
   return (
     <div className="flex min-h-dvh">
+      <a
+        href="#main"
+        className="sr-only z-[70] rounded-lg bg-ember-500 px-4 py-2 text-sm font-medium text-void focus:not-sr-only focus:fixed focus:top-3 focus:left-3"
+      >
+        Skip to content
+      </a>
       {/* Desktop sidebar */}
       <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 border-r border-edge/70 bg-abyss/90 lg:block">
         <Sidebar />
@@ -47,7 +55,11 @@ export function AppShell() {
 
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar onOpenMenu={() => setMenuOpen(true)} />
-        <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6 lg:px-10">
+        <main
+          id="main"
+          tabIndex={-1}
+          className="mx-auto w-full max-w-[1600px] flex-1 px-4 py-8 outline-none sm:px-6 lg:px-10"
+        >
           <Outlet />
         </main>
       </div>

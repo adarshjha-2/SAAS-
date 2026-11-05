@@ -7,8 +7,8 @@ moves to `online` only when its acceptance criteria are met and tested.
 | # | Milestone | Status |
 |---|---|---|
 | 1 | Project architecture & environment setup | ✅ Complete |
-| 2 | Frontend design system & command dashboard | ⏭ Next |
-| 3 | Backend persistence (SQLite) & activity log | Planned |
+| 2 | Frontend design system & command dashboard | ✅ Complete |
+| 3 | Backend persistence (SQLite) & activity log | ⏭ Next |
 | 4 | HashLab proof-of-work simulator | Planned |
 | 5 | Hardware Intelligence | Planned |
 | 6 | Bitcoin Network Intelligence | Planned |
@@ -30,12 +30,17 @@ moves to `online` only when its acceptance criteria are met and tested.
 - All lint, type and test gates green. A browser smoke test passed, including backend kill and
   recovery.
 
-### M2: Frontend design & dashboard
+### M2: Frontend design & dashboard ✅
 
-- Design-system primitives: stat tiles, charts, tables, empty/stale/error states, toasts, consent
-  dialog.
-- Command dashboard layout with Recharts panels bound to realtime topics.
-- Activity log UI (backed by M3). Route-level code splitting.
+- Design system: `Panel`, `StatTile` + `Sparkline`, `TimeSeriesChart` (with table twin),
+  `ProvenanceBadge`, `EmptyState`, `SegmentedControl`, `ConsentDialog`.
+- Validated data-series palette for the dark surface, plus documented chart conventions.
+- Command dashboard backed by live measurements: status tiles, latency telemetry (WebSocket
+  ping/pong with echoed IDs, API health timing), session activity log, honest module slots.
+- Truthfulness rules tested: no stale-as-live, gaps never interpolated, provenance on every figure.
+- Route-level code splitting and a skip-to-content link. Nexus Command is marked `online` in the
+  catalog.
+- Toasts were deferred: the activity log covers event notification without interrupting the user.
 
 ### M3: Backend & database
 

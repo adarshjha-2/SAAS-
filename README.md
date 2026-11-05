@@ -13,12 +13,12 @@ and an AI analyst called **NEXUS CORE**, all in one command-center interface.
 
 ## Status
 
-**Milestone 1 of 10 is complete.** The platform foundation is in place: architecture, backend
-core, frontend shell, realtime stream, tooling and CI. See [`docs/ROADMAP.md`](docs/ROADMAP.md).
+**Milestones 1–2 of 10 are complete.** The platform foundation is in place, along with the design
+system and a live Nexus Command dashboard. See [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 | Module | Milestone | Status |
 |---|---|---|
-| Nexus Command (dashboard) | 2 | Planned (platform status view live) |
+| Nexus Command (dashboard) | 2 | **Online** |
 | HashLab (PoW simulator) | 4 | Planned |
 | Hardware Intelligence | 5 | Planned |
 | Bitcoin Network Intelligence | 6 | Planned |

@@ -36,6 +36,18 @@
   --color-flux-600: #00b4cc;
   --color-flux-900: #002a33;
 
+  /*
+   * Data-series palette (categorical, fixed order - never cycled).
+   * Validated for the dark panel surface #0a0d14 with the dataviz palette
+   * checker: lightness band, chroma floor, adjacent CVD separation (worst
+   * deltaE 16.0), normal-vision floor and >=3:1 contrast all pass. The neon
+   * brand accents above stay for UI chrome; they are too light for data marks.
+   */
+  --color-series-1: #00a3bb; /* flux  */
+  --color-series-2: #e3611c; /* ember */
+  --color-series-3: #9085e9; /* violet */
+  --color-series-4: #d55181; /* magenta */
+
   --color-ok: #22d39b;
   --color-warn: #ffb224;
   --color-fault: #ff3d5e;

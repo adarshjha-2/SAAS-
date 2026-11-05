@@ -2,14 +2,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { FakeSocket } from "@/test/fakes";
 
-import { buildRealtimeUrl, computeBackoff, RealtimeConnection } from "./realtime";
+import {
+  buildRealtimeUrl,
+  computeBackoff,
+  RealtimeConnection,
+  type RealtimeConnectionOptions,
+} from "./realtime";
 
-function connect(backoff = () => 1_000) {
+function connect(backoff = () => 1_000, extra: Partial<RealtimeConnectionOptions> = {}) {
   const connection = new RealtimeConnection({
     url: "ws://test/ws/v1",
     topics: ["system"],
     createSocket: FakeSocket.factory,
     backoff,
+    pingIntervalMs: 0,
+    ...extra,
   });
   connection.start();
   return connection;
@@ -183,5 +190,98 @@ describe("RealtimeConnection", () => {
     unsubscribe();
     FakeSocket.latest().receive({ kind: "pong", ts: "now" });
     expect(listener).not.toHaveBeenCalled();
+  });
+});
+
+describe("latency measurement", () => {
+  function connectWithClock() {
+    let clock = 0;
+    const connection = connect(() => 1_000, {
+      pingIntervalMs: 5_000,
+      monotonicNow: () => clock,
+    });
+    const socket = FakeSocket.latest();
+    return {
+      connection,
+      socket,
+      tick: (ms: number) => {
+        clock += ms;
+        vi.advanceTimersByTime(ms);
+      },
+    };
+  }
+
+  const pings = (socket: FakeSocket) =>
+    socket.sent
+      .map((raw) => JSON.parse(raw) as { action: string; id?: string })
+      .filter((m) => m.action === "ping");
+
+  it("pings with a correlation id on open and then on an interval", () => {
+    const { socket, tick } = connectWithClock();
+    socket.open();
+    expect(pings(socket)).toEqual([{ action: "ping", id: "p1" }]);
+    tick(5_000);
+    tick(5_000);
+    expect(pings(socket).map((ping) => ping.id)).toEqual(["p1", "p2", "p3"]);
+  });
+
+  it("records round-trip time from the monotonic clock when the matching pong arrives", () => {
+    const { connection, socket, tick } = connectWithClock();
+    socket.open();
+    tick(23);
+    socket.receive({ kind: "pong", id: "p1", ts: "now" });
+
+    const snapshot = connection.getSnapshot();
+    expect(snapshot.latencyMs).toBe(23);
+    expect(snapshot.rttSamples).toHaveLength(1);
+    expect(snapshot.rttSamples[0]?.value).toBe(23);
+  });
+
+  it("ignores pongs it did not ask for, or answers it already counted", () => {
+    const { connection, socket, tick } = connectWithClock();
+    socket.open();
+    tick(10);
+    socket.receive({ kind: "pong", id: "unknown", ts: "now" });
+    socket.receive({ kind: "pong", id: null, ts: "now" });
+    expect(connection.getSnapshot().rttSamples).toHaveLength(0);
+    socket.receive({ kind: "pong", id: "p1", ts: "now" });
+    socket.receive({ kind: "pong", id: "p1", ts: "now" });
+    expect(connection.getSnapshot().rttSamples).toHaveLength(1);
+  });
+
+  it("bounds outstanding pings when pongs never arrive", () => {
+    const { connection, socket, tick } = connectWithClock();
+    socket.open();
+    for (let i = 0; i < 20; i += 1) tick(5_000); // 21 pings, no pongs
+    // The oldest ids were forgotten, so a very late answer is not counted.
+    socket.receive({ kind: "pong", id: "p1", ts: "now" });
+    expect(connection.getSnapshot().rttSamples).toHaveLength(0);
+    socket.receive({ kind: "pong", id: "p21", ts: "now" });
+    expect(connection.getSnapshot().rttSamples).toHaveLength(1);
+  });
+
+  it("clears the current latency on disconnect but keeps the history", () => {
+    const { connection, socket, tick } = connectWithClock();
+    socket.open();
+    tick(15);
+    socket.receive({ kind: "pong", id: "p1", ts: "now" });
+    socket.drop();
+
+    const snapshot = connection.getSnapshot();
+    expect(snapshot.latencyMs).toBeNull();
+    expect(snapshot.rttSamples).toHaveLength(1);
+    const sentBefore = socket.sent.length;
+    tick(30_000);
+    expect(socket.sent).toHaveLength(sentBefore); // no pings on a dead socket
+  });
+
+  it("stops pinging when stopped", () => {
+    const { connection, socket, tick } = connectWithClock();
+    socket.open();
+    connection.stop();
+    const sentBefore = socket.sent.length;
+    tick(30_000);
+    expect(socket.sent).toHaveLength(sentBefore);
+    expect(connection.getSnapshot().latencyMs).toBeNull();
   });
 });

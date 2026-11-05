@@ -78,6 +78,11 @@ def test_catalog_milestones_are_ordered() -> None:
     assert milestones == sorted(milestones)
 
 
+def test_command_dashboard_is_online() -> None:
+    online = {module.key for module in MODULES if module.status is ModuleStatus.ONLINE}
+    assert online == {"command"}
+
+
 def test_get_single_module(client: TestClient) -> None:
     response = client.get("/api/v1/system/modules/hashlab")
     assert response.status_code == 200

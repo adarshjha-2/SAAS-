@@ -22,6 +22,23 @@ export function formatBytes(bytes: number): string {
   return `${rounded} ${units[unit]}`;
 }
 
+/** Local 24-hour clock time with seconds, e.g. `14:03:27`. */
+export function formatClock(t: number): string {
+  return new Date(t).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+}
+
+/** Milliseconds with sensible precision: `0.8 ms`, `12 ms`, `1.2 s`. */
+export function formatMs(ms: number): string {
+  if (ms >= 1_000) return `${(ms / 1_000).toFixed(1)} s`;
+  if (ms < 10) return `${ms.toFixed(1)} ms`;
+  return `${Math.round(ms)} ms`;
+}
+
 export function cn(...classes: (string | false | null | undefined)[]): string {
   return classes.filter(Boolean).join(" ");
 }

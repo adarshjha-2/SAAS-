@@ -81,6 +81,6 @@ export interface SystemHeartbeat {
 export type ServerMessage =
   | { kind: "welcome"; client_id: string; server_version: string; topics_available: Topic[] }
   | { kind: "ack"; action: "subscribe" | "unsubscribe"; topics: Topic[] }
-  | { kind: "pong"; ts: string }
+  | { kind: "pong"; id: string | null; ts: string }
   | { kind: "error"; code: string; message: string }
   | RealtimeEvent;
