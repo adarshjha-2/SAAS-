@@ -42,6 +42,11 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { key: "core", path: "/core", label: "NEXUS CORE", icon: Bot, section: "assistant" },
 ];
 
+/** Titles for routes that are not product modules. */
+export const PAGE_TITLES: Record<string, string> = {
+  "/activity": "Activity log",
+};
+
 export const NAV_SECTIONS: { id: NavItem["section"]; label: string }[] = [
   { id: "command", label: "Command" },
   { id: "modules", label: "Intelligence Modules" },

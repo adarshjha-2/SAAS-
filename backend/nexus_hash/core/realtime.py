@@ -35,7 +35,7 @@ class Topic(StrEnum):
     """Realtime channels. Publishers are added by the milestone that owns each one."""
 
     SYSTEM = "system"  # Milestone 1: heartbeat / uptime / connection count
-    ACTIVITY = "activity"  # Milestone 3: activity log entries
+    ACTIVITY = "activity"  # Milestone 3: persisted activity log entries (live)
     HASHLAB = "hashlab"  # Milestone 4: simulation progress
     HARDWARE = "hardware"  # Milestone 5: telemetry samples
     NETWORK = "network"  # Milestone 6: network snapshots

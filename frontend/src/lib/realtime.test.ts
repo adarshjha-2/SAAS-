@@ -285,3 +285,25 @@ describe("latency measurement", () => {
     expect(connection.getSnapshot().latencyMs).toBeNull();
   });
 });
+
+describe("onEvent", () => {
+  it("delivers every event on a topic in order, even in a burst", () => {
+    const connection = connect();
+    const socket = FakeSocket.latest();
+    socket.open();
+    const received: unknown[] = [];
+    const unsubscribe = connection.onEvent("activity", (event) => received.push(event.data));
+    const other = vi.fn();
+    connection.onEvent("network", other);
+
+    socket.receive({ kind: "event", topic: "activity", type: "entry", ts: "t", data: { id: 1 } });
+    socket.receive({ kind: "event", topic: "activity", type: "entry", ts: "t", data: { id: 2 } });
+    socket.receive({ kind: "event", topic: "system", type: "heartbeat", ts: "t", data: {} });
+
+    expect(received).toEqual([{ id: 1 }, { id: 2 }]);
+    expect(other).not.toHaveBeenCalled();
+    unsubscribe();
+    socket.receive({ kind: "event", topic: "activity", type: "entry", ts: "t", data: { id: 3 } });
+    expect(received).toHaveLength(2);
+  });
+});

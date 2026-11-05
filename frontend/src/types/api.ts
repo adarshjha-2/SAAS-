@@ -39,7 +39,32 @@ export interface SystemInfo {
     heartbeat_seconds: number;
     connections: number;
   };
+  database: {
+    schema_revision: string | null;
+    activity_retention_days: number;
+    activity_max_entries: number;
+  };
   disclaimers: string[];
+}
+
+export type ActivityLevelName = "info" | "success" | "warning" | "error";
+export type ActivityCategoryName =
+  "system" | "database" | "hashlab" | "hardware" | "network" | "profitability" | "intelligence" | "core";
+
+export interface ServerActivityEntry {
+  id: number;
+  ts: string;
+  level: ActivityLevelName;
+  category: ActivityCategoryName;
+  actor: "system" | "user";
+  message: string;
+  detail: string | null;
+  context: Record<string, unknown> | null;
+}
+
+export interface ActivityPage {
+  items: ServerActivityEntry[];
+  next_before_id: number | null;
 }
 
 export interface ModuleDescriptor {

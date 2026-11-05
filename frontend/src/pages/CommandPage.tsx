@@ -1,4 +1,6 @@
-import { ActivityFeed } from "@/components/ActivityFeed";
+import { Link } from "react-router";
+
+import { ActivityFeed } from "@/components/activity/ActivityFeed";
 import { Panel } from "@/components/ui/Panel";
 import { ProvenanceBadge } from "@/components/ui/ProvenanceBadge";
 import { useHealth, useSystemInfo } from "@/hooks/useSystem";
@@ -40,12 +42,15 @@ export function CommandPage() {
         <Panel
           title="Activity log"
           eyebrow="Events"
-          actions={<ProvenanceBadge kind="session" />}
+          actions={<ProvenanceBadge kind="live" />}
           className="xl:col-span-4"
         >
           <div className="max-h-[330px] overflow-y-auto pr-1">
             <ActivityFeed />
           </div>
+          <Link to="/activity" className="mt-4 inline-block text-sm text-flux-400 hover:text-flux-300">
+            View full activity log →
+          </Link>
         </Panel>
       </div>
 

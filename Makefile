@@ -5,7 +5,7 @@ SHELL := /usr/bin/env bash
 BACKEND  := backend
 FRONTEND := frontend
 
-.PHONY: help install backend frontend dev test backend-test frontend-test lint typecheck format build check clean
+.PHONY: help install backend frontend dev test backend-test frontend-test lint typecheck format build check clean db-upgrade db-revision
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
@@ -45,6 +45,13 @@ format: ## Auto-format both projects
 
 build: ## Production build of the frontend
 	cd $(FRONTEND) && npm run build
+
+db-upgrade: ## Apply database migrations (the server also does this on start)
+	cd $(BACKEND) && uv run alembic upgrade head
+
+db-revision: ## Autogenerate a migration from model changes: make db-revision m="add samples"
+	@test -n "$(m)" || (echo 'usage: make db-revision m="describe the change"' && exit 1)
+	cd $(BACKEND) && uv run alembic revision --autogenerate -m "$(m)"
 
 check: lint typecheck test build ## Everything CI runs
 

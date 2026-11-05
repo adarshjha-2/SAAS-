@@ -1,18 +1,11 @@
-import { CircleCheck, CircleX, Info, TriangleAlert, type LucideIcon } from "lucide-react";
-
-import type { ActivityEntry, ActivityLevel } from "@/lib/activity";
+import type { ActivityEntry } from "@/lib/activity";
 import { useActivityEntries } from "@/lib/activityContext";
 import { cn, formatClock } from "@/lib/format";
 
-const LEVELS: Record<ActivityLevel, { icon: LucideIcon; label: string; className: string }> = {
-  info: { icon: Info, label: "Info", className: "text-ink-muted" },
-  success: { icon: CircleCheck, label: "Resolved", className: "text-ok" },
-  warning: { icon: TriangleAlert, label: "Warning", className: "text-warn" },
-  error: { icon: CircleX, label: "Error", className: "text-fault" },
-};
+import { ACTIVITY_LEVELS } from "./levels";
 
 function ActivityRow({ entry }: { entry: ActivityEntry }) {
-  const level = LEVELS[entry.level];
+  const level = ACTIVITY_LEVELS[entry.level];
   const Icon = level.icon;
   return (
     <li className="flex gap-3 py-2.5 first:pt-0 last:pb-0">
@@ -21,6 +14,10 @@ function ActivityRow({ entry }: { entry: ActivityEntry }) {
         <p className="text-sm text-ink">
           <span className="sr-only">{level.label}: </span>
           {entry.message}
+        </p>
+        <p className="mt-0.5 font-mono text-[10px] tracking-wider text-ink-faint uppercase">
+          {entry.source === "server" ? `server · ${entry.category ?? "system"}` : "this session"}
+          {entry.actor === "user" && " · by you"}
         </p>
         {entry.detail && (
           <p title={entry.detail} className="truncate text-xs text-ink-faint">
@@ -38,7 +35,7 @@ function ActivityRow({ entry }: { entry: ActivityEntry }) {
   );
 }
 
-/** Newest-first activity for this session; server-side history joins in Milestone 3. */
+/** Newest-first activity: persisted server entries merged with what this tab observed. */
 export function ActivityFeed({ limit = 12 }: { limit?: number }) {
   const entries = useActivityEntries();
   if (entries.length === 0) {
@@ -47,7 +44,7 @@ export function ActivityFeed({ limit = 12 }: { limit?: number }) {
   return (
     <ol aria-label="Activity log" className="divide-y divide-edge/70">
       {entries.slice(0, limit).map((entry) => (
-        <ActivityRow key={entry.id} entry={entry} />
+        <ActivityRow key={entry.key} entry={entry} />
       ))}
     </ol>
   );

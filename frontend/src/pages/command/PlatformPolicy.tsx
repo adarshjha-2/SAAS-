@@ -63,6 +63,8 @@ export function PlatformPolicy() {
               <dd className="font-mono font-tabular">{formatBytes(info.data.limits.ws_max_message_bytes)}</dd>
               <dt className="text-ink-muted">Heartbeat interval</dt>
               <dd className="font-mono font-tabular">{info.data.realtime.heartbeat_seconds}s</dd>
+              <dt className="text-ink-muted">Activity retention</dt>
+              <dd className="font-mono font-tabular">{info.data.database.activity_retention_days} days</dd>
             </dl>
           )}
           <p className="mt-4 flex items-center gap-2 text-xs text-ink-faint">

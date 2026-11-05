@@ -1,14 +1,22 @@
 import { QueryClient } from "@tanstack/react-query";
-import { act, render, screen, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AppProviders } from "@/app/AppProviders";
 import { ActivityLog } from "@/lib/activity";
-import { RealtimeConnection } from "@/lib/realtime";
+import { APP_TOPICS, RealtimeConnection } from "@/lib/realtime";
 import { routes } from "@/routes";
-import { backendFetch, FakeSocket, infoFixture, jsonResponse } from "@/test/fakes";
+import {
+  activityFixture,
+  backendFetch,
+  FakeSocket,
+  infoFixture,
+  jsonResponse,
+  serverEntry,
+  urlOf,
+} from "@/test/fakes";
 
 const HEARTBEAT = {
   kind: "event",
@@ -18,14 +26,14 @@ const HEARTBEAT = {
   data: { status: "ok", version: "0.1.0", uptime_seconds: 3_725, server_time: "", connections: 1 },
 };
 
-function renderApp(path = "/") {
+function renderApp(path = "/", { backoffMs = 60_000 }: { backoffMs?: number } = {}) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   let clock = 1_000;
   const connection = new RealtimeConnection({
     url: "ws://test/ws/v1",
-    topics: ["system"],
+    topics: APP_TOPICS, // exactly what production subscribes to
     createSocket: FakeSocket.factory,
-    backoff: () => 60_000,
+    backoff: () => backoffMs,
     pingIntervalMs: 60_000, // one ping on open; no interval noise during a test
     monotonicNow: () => clock,
   });
@@ -224,5 +232,143 @@ describe("routing", () => {
     renderApp("/");
     expect(await screen.findByRole("link", { name: "Skip to content" })).toHaveAttribute("href", "#main");
     expect(screen.getByRole("main")).toHaveAttribute("id", "main");
+  });
+});
+
+const activityEvent = (id: number, message: string) => ({
+  kind: "event",
+  topic: "activity",
+  type: "entry",
+  ts: "2026-11-05T09:10:00Z",
+  data: serverEntry(id, { message, ts: new Date(Date.UTC(2026, 10, 5, 9, 10, id)).toISOString() }),
+});
+
+describe("server activity", () => {
+  it("shows persisted server entries alongside this session's events", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(backendFetch());
+    renderApp("/");
+    const log = within(await screen.findByRole("list", { name: "Activity log" }));
+    expect(await log.findByText("NEXUS HASH AI 0.1.0 started")).toBeInTheDocument();
+    expect(log.getByText("Database schema migrated to revision 0001")).toBeInTheDocument();
+    expect(log.getByText("server · database")).toBeInTheDocument();
+    expect(await log.findByText("Backend API online (v0.1.0)")).toBeInTheDocument();
+    expect(log.getAllByText("this session").length).toBeGreaterThan(0);
+  });
+
+  it("subscribes to the activity topic and shows every live entry, even in a burst", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(backendFetch());
+    const { advanceClock } = renderApp("/");
+    const log = within(await screen.findByRole("list", { name: "Activity log" }));
+    await log.findByText("NEXUS HASH AI 0.1.0 started");
+    const socket = goLive(advanceClock);
+    expect(JSON.parse(socket.sent[0] ?? "{}")).toEqual({
+      action: "subscribe",
+      topics: ["system", "activity"],
+    });
+
+    act(() => {
+      socket.receive(activityEvent(10, "Retention removed 3 activity entries"));
+      socket.receive(activityEvent(11, "Benchmark finished"));
+    });
+    expect(log.getByText("Retention removed 3 activity entries")).toBeInTheDocument();
+    expect(log.getByText("Benchmark finished")).toBeInTheDocument();
+  });
+
+  it("backfills the server log after reconnecting", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(backendFetch());
+    const { advanceClock } = renderApp("/", { backoffMs: 10 });
+    const log = within(await screen.findByRole("list", { name: "Activity log" }));
+    await log.findByText("NEXUS HASH AI 0.1.0 started");
+    const socket = goLive(advanceClock);
+    const activityCalls = () =>
+      fetchSpy.mock.calls.filter(([url]) => urlOf(url).startsWith("/api/v1/activity")).length;
+    const before = activityCalls();
+
+    // An entry was recorded while we were disconnected; only the API has it.
+    fetchSpy.mockImplementation(
+      backendFetch({
+        "/api/v1/activity": () =>
+          jsonResponse({
+            items: [serverEntry(3, { message: "Recorded while offline" }), ...activityFixture.items],
+            next_before_id: null,
+          }),
+      }),
+    );
+    act(() => socket.drop());
+    await waitFor(() => expect(FakeSocket.instances.length).toBe(2));
+    act(() => FakeSocket.latest().open());
+
+    expect(await log.findByText("Recorded while offline")).toBeInTheDocument();
+    expect(activityCalls()).toBeGreaterThan(before);
+  });
+});
+
+describe("activity log page", () => {
+  it("lists persisted entries with full timestamps and a page title", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(backendFetch());
+    renderApp("/activity");
+    expect(await screen.findByRole("heading", { level: 1, name: "Activity log" })).toBeInTheDocument();
+    const list = within(await screen.findByRole("list", { name: "Server activity" }));
+    expect(list.getByText("NEXUS HASH AI 0.1.0 started")).toBeInTheDocument();
+    expect(list.getByText("Environment: development")).toBeInTheDocument();
+    expect(list.getByText("database · automatic · #1")).toBeInTheDocument();
+    expect(screen.getByText(/kept for 30 days/)).toBeInTheDocument();
+    expect(screen.getByText("Activity log", { selector: "header p" })).toBeInTheDocument();
+  });
+
+  it("filters by level and category through the API", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(backendFetch());
+    renderApp("/activity");
+    await screen.findByRole("list", { name: "Server activity" });
+
+    await userEvent.selectOptions(screen.getByLabelText("Level"), "error");
+    await userEvent.selectOptions(screen.getByLabelText("Category"), "database");
+
+    await waitFor(() => {
+      const urls = fetchSpy.mock.calls.map(([url]) => urlOf(url));
+      expect(urls).toContain("/api/v1/activity?limit=50&level=error&category=database");
+    });
+    await userEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+    expect(screen.getByLabelText("Level")).toHaveValue("");
+  });
+
+  it("loads older entries with the keyset cursor", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = urlOf(input);
+      if (url.startsWith("/api/v1/activity")) {
+        const older = url.includes("before_id=5");
+        return Promise.resolve(
+          jsonResponse(
+            older
+              ? { items: [serverEntry(4, { message: "Older entry" })], next_before_id: null }
+              : { items: [serverEntry(6), serverEntry(5)], next_before_id: 5 },
+          ),
+        );
+      }
+      return backendFetch()(input);
+    });
+    renderApp("/activity");
+    await screen.findByText("Server event 6");
+    await userEvent.click(screen.getByRole("button", { name: "Load older entries" }));
+    expect(await screen.findByText("Older entry")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Load older entries" })).not.toBeInTheDocument();
+    expect(fetchSpy.mock.calls.map(([url]) => urlOf(url))).toContain("/api/v1/activity?limit=50&before_id=5");
+  });
+
+  it("explains an empty result", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      backendFetch({ "/api/v1/activity": () => jsonResponse({ items: [], next_before_id: null }) }),
+    );
+    renderApp("/activity");
+    expect(await screen.findByText("No matching entries")).toBeInTheDocument();
+  });
+
+  it("is linked from the dashboard", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(backendFetch());
+    renderApp("/");
+    expect(await screen.findByRole("link", { name: "View full activity log →" })).toHaveAttribute(
+      "href",
+      "/activity",
+    );
   });
 });

@@ -31,10 +31,52 @@ from nexus_hash.core.middleware import (
     SecurityHeadersMiddleware,
 )
 from nexus_hash.core.realtime import RealtimeHub, Topic, run_system_heartbeat, system_heartbeat
+from nexus_hash.db.engine import create_engine, create_session_factory
+from nexus_hash.db.errors import install_database_error_handlers
+from nexus_hash.db.migrate import current_revision, head_revision, upgrade_to_head
+from nexus_hash.modules.activity import router as activity_api
+from nexus_hash.modules.activity.schemas import ActivityCategory, ActivityLevel, NewActivity
+from nexus_hash.modules.activity.service import ActivityService, run_retention
 
 logger = logging.getLogger("nexus_hash")
 
 DOCS_PATHS = ("/docs", "/redoc", "/openapi.json")
+
+
+class SchemaOutOfDateError(RuntimeError):
+    pass
+
+
+async def _prepare_database(app: FastAPI, settings: Settings) -> ActivityService:
+    """Create the engine, migrate (or verify) the schema, and build services."""
+    engine = app.state.db_engine = create_engine(settings)
+    head = head_revision()
+    migration = None
+    if settings.db_auto_migrate:
+        migration = await asyncio.to_thread(upgrade_to_head, settings.database_sync_url)
+        revision = migration.after
+    else:
+        revision = await asyncio.to_thread(current_revision, settings.database_sync_url)
+        if revision != head:
+            await engine.dispose()
+            raise SchemaOutOfDateError(
+                f"database schema is at {revision or 'nothing'} but this build needs {head}; "
+                "run `uv run alembic upgrade head` or set NEXUS_DB_AUTO_MIGRATE=true"
+            )
+    app.state.schema_revision = revision
+
+    activity = ActivityService(create_session_factory(engine), app.state.hub)
+    if migration is not None and migration.changed:
+        await activity.record(
+            NewActivity(
+                level=ActivityLevel.SUCCESS,
+                category=ActivityCategory.DATABASE,
+                message=f"Database schema migrated to revision {migration.after}",
+                detail=f"Previous revision: {migration.before or 'none (new database)'}",
+                context={"before": migration.before, "after": migration.after},
+            )
+        )
+    return activity
 
 
 @asynccontextmanager
@@ -45,10 +87,31 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     hub.set_snapshot_provider(
         Topic.SYSTEM, lambda: ("heartbeat", system_heartbeat(hub, started_at))
     )
+
+    activity = app.state.activity = await _prepare_database(app, settings)
+    await activity.record(
+        NewActivity(
+            level=ActivityLevel.INFO,
+            category=ActivityCategory.SYSTEM,
+            message=f"{APP_NAME} {__version__} started",
+            detail=f"Environment: {settings.environment.value}",
+            context={"version": __version__, "environment": settings.environment.value},
+        )
+    )
+
     tasks: dict[str, asyncio.Task[None]] = app.state.background_tasks
     tasks["system_heartbeat"] = asyncio.create_task(
         run_system_heartbeat(hub, settings.ws_heartbeat_seconds, started_at),
         name="nexus-system-heartbeat",
+    )
+    tasks["activity_retention"] = asyncio.create_task(
+        run_retention(
+            activity,
+            interval=settings.retention_interval_seconds,
+            max_age_days=settings.activity_retention_days,
+            max_entries=settings.activity_max_entries,
+        ),
+        name="nexus-activity-retention",
     )
     logger.info(
         "%s %s started",
@@ -65,6 +128,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             with contextlib.suppress(asyncio.CancelledError):
                 await task
         tasks.clear()
+        try:
+            await activity.record(
+                NewActivity(
+                    level=ActivityLevel.INFO,
+                    category=ActivityCategory.SYSTEM,
+                    message=f"{APP_NAME} stopping",
+                )
+            )
+        except Exception:
+            logger.exception("could not record shutdown in the activity log")
+        await app.state.db_engine.dispose()
         logger.info("%s stopped", APP_NAME)
 
 
@@ -89,6 +163,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.background_tasks = {}
 
     install_exception_handlers(app)
+    install_database_error_handlers(app)
 
     # add_middleware prepends, so the last one added is the outermost layer.
     # Effective order (outer -> inner): SecurityHeaders, CORS, RequestContext, BodySizeLimit.
@@ -106,5 +181,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(SecurityHeadersMiddleware, csp_exempt_paths=DOCS_PATHS if docs else ())
 
     app.include_router(system_api.router, prefix=f"/api/{API_VERSION}")
+    app.include_router(activity_api.router, prefix=f"/api/{API_VERSION}")
     app.include_router(realtime_api.router)
     return app

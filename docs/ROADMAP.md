@@ -8,8 +8,8 @@ moves to `online` only when its acceptance criteria are met and tested.
 |---|---|---|
 | 1 | Project architecture & environment setup | ✅ Complete |
 | 2 | Frontend design system & command dashboard | ✅ Complete |
-| 3 | Backend persistence (SQLite) & activity log | ⏭ Next |
-| 4 | HashLab proof-of-work simulator | Planned |
+| 3 | Backend persistence (SQLite) & activity log | ✅ Complete |
+| 4 | HashLab proof-of-work simulator | ⏭ Next |
 | 5 | Hardware Intelligence | Planned |
 | 6 | Bitcoin Network Intelligence | Planned |
 | 7 | Profitability Intelligence | Planned |
@@ -42,10 +42,18 @@ moves to `online` only when its acceptance criteria are met and tested.
   catalog.
 - Toasts were deferred: the activity log covers event notification without interrupting the user.
 
-### M3: Backend & database
+### M3: Backend & database ✅
 
-- SQLAlchemy 2.0 + Alembic and SQLite in WAL mode. Repositories, with a DB check in `/health`.
-- Activity log service plus API, published on the `activity` topic. Retention jobs.
+- SQLite (WAL) via async SQLAlchemy 2.x and `aiosqlite`. A packaged Alembic migration (`0001`)
+  runs automatically at startup, or startup fails fast when auto-migrate is off. A test fails on
+  schema drift.
+- `/health` gains a database check, `/info` reports the schema revision and retention policy, and
+  database outages become 503s.
+- Activity log with repository, service and a read-only paginated, filterable API, live on the
+  `activity` topic. A retention job enforces age and count limits.
+- Real server events recorded: start, stop, migration, retention.
+- Frontend: server entries merged into the dashboard feed (deduplicated, with backfill after
+  reconnect) and a full `/activity` page with filters and pagination.
 
 ### M4: HashLab
 

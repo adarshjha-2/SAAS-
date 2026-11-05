@@ -13,8 +13,9 @@ and an AI analyst called **NEXUS CORE**, all in one command-center interface.
 
 ## Status
 
-**Milestones 1–2 of 10 are complete.** The platform foundation is in place, along with the design
-system and a live Nexus Command dashboard. See [`docs/ROADMAP.md`](docs/ROADMAP.md).
+**Milestones 1–3 of 10 are complete.** The platform foundation, the design system, a live Nexus
+Command dashboard and SQLite persistence with a server activity log are in place. See
+[`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 | Module | Milestone | Status |
 |---|---|---|
@@ -52,6 +53,8 @@ only by the backend. It is never sent to the browser and is scrubbed from logs.
 | `make typecheck` | mypy `--strict` + `tsc` |
 | `make check` | Everything CI runs: lint, typecheck, test, build |
 | `make format` | Auto-format both projects |
+| `make db-upgrade` | Apply database migrations (the server also does this on start) |
+| `make db-revision m="…"` | Autogenerate a new migration from model changes |
 
 ## Architecture at a glance
 
@@ -70,14 +73,18 @@ FastAPI backend — validation · secrets · limits · realtime hub
 - [`docs/adr/`](docs/adr/): architecture decision records
 - [`SECURITY.md`](SECURITY.md): guarantees, controls and reporting
 
-## API (Milestone 1)
+Data lives in `backend/data/nexus_hash.db` (SQLite) by default. Change it with
+`NEXUS_DATABASE_PATH`.
+
+## API
 
 | Endpoint | Purpose |
 |---|---|
 | `GET /api/v1/system/health` | Liveness and readiness with per-subsystem checks |
 | `GET /api/v1/system/info` | Version, feature flags (e.g. `llm_configured`), limits, disclaimers |
 | `GET /api/v1/system/modules[/{key}]` | Module catalog and delivery status |
-| `WS /ws/v1` | Realtime stream: subscribe to `system` (live), more topics per milestone |
+| `GET /api/v1/activity` | Persisted activity log, newest first (`limit`, `before_id`, `level`, `category`) |
+| `WS /ws/v1` | Realtime stream: `system` and `activity` live, more topics per milestone |
 
 Errors always use the envelope
 `{"error": {"code", "message", "request_id", "details?"}}`.

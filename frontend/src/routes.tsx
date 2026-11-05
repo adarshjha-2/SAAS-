@@ -31,6 +31,13 @@ export const routes: RouteObject[] = [
           return { element: <ModulePage moduleKey={item.key} /> };
         },
       })),
+      {
+        path: "activity",
+        lazy: async () => {
+          const { ActivityPage } = await import("@/pages/ActivityPage");
+          return { Component: ActivityPage };
+        },
+      },
       { path: "*", element: <NotFoundPage /> },
     ],
   },

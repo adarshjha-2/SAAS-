@@ -25,7 +25,7 @@ def test_health_ok_when_running(client: TestClient) -> None:
     assert body["status"] == "ok"
     assert body["version"] == __version__
     assert body["environment"] == "test"
-    assert body["checks"] == {"api": "ok", "realtime": "ok"}
+    assert body["checks"] == {"api": "ok", "realtime": "ok", "database": "ok"}
     assert body["uptime_seconds"] >= 0
 
 

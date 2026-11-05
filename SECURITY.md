@@ -39,6 +39,19 @@ guarantees, how each guarantee is enforced, and how to report a problem.
   release via npm `overrides`. Fonts are self-hosted, so no third-party CDN requests are made at
   runtime.
 
+## Controls implemented (Milestone 3)
+
+- **Activity log integrity.** Entries are written only by backend services. The HTTP API is
+  read-only, so no client can forge or delete audit entries. Input to the log is length-bounded,
+  with a JSON `context` capped at 4 KB.
+- **Database errors.** A locked, missing or corrupt database returns a generic 503. Driver messages
+  stay in server logs.
+- **Data minimisation.** `/system/info` exposes the schema revision and retention policy, never
+  filesystem paths. Retention limits how long activity data is kept (30 days or 50,000 entries by
+  default).
+- **Test isolation.** Every test runs on its own temporary database, so the test suite can never
+  read or modify real user data.
+
 ## Planned controls
 
 - M4: simulator limits and consent gate (ADR 0002).

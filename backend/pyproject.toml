@@ -8,6 +8,9 @@ dependencies = [
     "uvicorn[standard]>=0.30",
     "pydantic>=2.7",
     "pydantic-settings>=2.7",
+    "sqlalchemy[asyncio]>=2.0.30",
+    "aiosqlite>=0.20",
+    "alembic>=1.13",
 ]
 
 [project.scripts]
@@ -65,6 +68,8 @@ filterwarnings = ["error::DeprecationWarning:nexus_hash.*"]
 [tool.coverage.run]
 source = ["nexus_hash"]
 branch = true
+# SQLAlchemy's async engine runs driver code inside greenlets.
+concurrency = ["thread", "greenlet"]
 
 [tool.coverage.report]
 show_missing = true

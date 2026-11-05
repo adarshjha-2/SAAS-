@@ -30,6 +30,9 @@ export const INITIAL_SNAPSHOT: RealtimeSnapshot = {
   rttSamples: [],
 };
 
+/** Topics every tab subscribes to; module pages add their own as they ship. */
+export const APP_TOPICS: readonly Topic[] = ["system", "activity"];
+
 const DEFAULT_PING_INTERVAL_MS = 5_000;
 const MAX_PENDING_PINGS = 8;
 
@@ -76,7 +79,7 @@ const WS_CONNECTING = 0; // WebSocket.CONNECTING, without relying on a global
 
 export interface RealtimeConnectionOptions {
   url: string;
-  topics: Topic[];
+  topics: readonly Topic[];
   createSocket?: WebSocketFactory;
   backoff?: (attempt: number) => number;
   /** How often to measure round-trip latency while open; 0 disables pinging. */
@@ -93,7 +96,7 @@ export interface RealtimeConnectionOptions {
  */
 export class RealtimeConnection {
   private readonly url: string;
-  private readonly topics: Topic[];
+  private readonly topics: readonly Topic[];
   private readonly createSocket: WebSocketFactory;
   private readonly backoff: (attempt: number) => number;
   private readonly pingIntervalMs: number;
@@ -107,6 +110,7 @@ export class RealtimeConnection {
   private running = false;
   private snapshot: RealtimeSnapshot = INITIAL_SNAPSHOT;
   private readonly listeners = new Set<() => void>();
+  private readonly eventListeners = new Map<Topic, Set<(event: ReceivedEvent) => void>>();
 
   constructor({
     url,
@@ -130,6 +134,21 @@ export class RealtimeConnection {
   };
 
   readonly getSnapshot = (): RealtimeSnapshot => this.snapshot;
+
+  /**
+   * Receive every event on a topic, synchronously and in order. Use this for
+   * event streams (e.g. activity entries); the snapshot only keeps the latest
+   * event per topic, so bursts between renders would otherwise be lost.
+   */
+  onEvent(topic: Topic, listener: (event: ReceivedEvent) => void): () => void {
+    let listeners = this.eventListeners.get(topic);
+    if (!listeners) {
+      listeners = new Set();
+      this.eventListeners.set(topic, listeners);
+    }
+    listeners.add(listener);
+    return () => listeners.delete(listener);
+  }
 
   start(): void {
     if (this.running) return;
@@ -201,12 +220,15 @@ export class RealtimeConnection {
       case "welcome":
         this.update({ clientId: message.client_id, lastMessageAt: now });
         break;
-      case "event":
+      case "event": {
+        const received: ReceivedEvent = { ...message, receivedAt: now };
         this.update({
           lastMessageAt: now,
-          events: { ...this.snapshot.events, [message.topic]: { ...message, receivedAt: now } },
+          events: { ...this.snapshot.events, [message.topic]: received },
         });
+        this.eventListeners.get(message.topic)?.forEach((listener) => listener(received));
         break;
+      }
       case "pong":
         this.recordPong(message.id, now);
         break;

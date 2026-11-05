@@ -18,6 +18,7 @@ import ipaddress
 import re
 from enum import StrEnum
 from functools import lru_cache
+from pathlib import Path
 from typing import Annotated, Any, Literal, Self
 
 from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
@@ -79,6 +80,14 @@ class Settings(BaseSettings):
     ws_client_queue_size: int = Field(default=256, ge=8, le=10_000)
     ws_max_message_bytes: int = Field(default=4_096, ge=256, le=65_536)
 
+    # --- Persistence (SQLite) ---------------------------------------------
+    # Relative paths resolve against the server's working directory (backend/).
+    database_path: Path = Path("data/nexus_hash.db")
+    db_auto_migrate: bool = True
+    activity_retention_days: int = Field(default=30, ge=1, le=3_650)
+    activity_max_entries: int = Field(default=50_000, ge=100, le=5_000_000)
+    retention_interval_seconds: float = Field(default=3_600.0, ge=0.05, le=86_400.0)
+
     # --- Secrets (backend only; never sent to the frontend) ----------------
     anthropic_api_key: SecretStr | None = Field(
         default=None,
@@ -104,6 +113,17 @@ class Settings(BaseSettings):
                 raise ValueError(f"invalid CORS origin {origin!r}; expected scheme://host[:port]")
             cleaned.append(normalized)
         return cleaned
+
+    @field_validator("database_path")
+    @classmethod
+    def _validate_database_path(cls, value: Path) -> Path:
+        if str(value) in {"", ":memory:"} or value.name.startswith("file:"):
+            raise ValueError(
+                "database_path must be a file path (in-memory databases are not supported)"
+            )
+        if value.exists() and value.is_dir():
+            raise ValueError(f"database_path {str(value)!r} is a directory")
+        return value
 
     @field_validator("anthropic_api_key")
     @classmethod
@@ -131,6 +151,16 @@ class Settings(BaseSettings):
         if self.docs_enabled is not None:
             return self.docs_enabled
         return not self.is_production
+
+    @property
+    def database_url(self) -> str:
+        """Async SQLAlchemy URL used by the application."""
+        return f"sqlite+aiosqlite:///{self.database_path.expanduser()}"
+
+    @property
+    def database_sync_url(self) -> str:
+        """Synchronous URL used by Alembic migrations."""
+        return f"sqlite:///{self.database_path.expanduser()}"
 
     @property
     def llm_configured(self) -> bool:

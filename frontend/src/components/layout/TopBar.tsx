@@ -3,7 +3,7 @@ import { useLocation } from "react-router";
 
 import { StatusPill } from "@/components/ui/Status";
 import type { Tone } from "@/components/ui/status-meta";
-import { NAV_ITEMS } from "@/config/navigation";
+import { NAV_ITEMS, PAGE_TITLES } from "@/config/navigation";
 import { useHealth } from "@/hooks/useSystem";
 import type { ConnectionStatus } from "@/lib/realtime";
 import { useRealtime } from "@/lib/realtimeContext";
@@ -46,7 +46,7 @@ export function TopBar({ onOpenMenu }: { onOpenMenu: () => void }) {
       <div className="min-w-0 flex-1">
         <p className="font-mono text-[10px] tracking-[0.22em] text-ink-faint uppercase">NEXUS HASH AI</p>
         <p className="truncate font-display text-sm font-semibold tracking-wide">
-          {current?.label ?? "Unknown route"}
+          {current?.label ?? PAGE_TITLES[pathname] ?? "Unknown route"}
         </p>
       </div>
       <div className="flex items-center gap-2" aria-live="polite">

@@ -73,7 +73,8 @@ flowchart LR
 │   │   │   ├── realtime.py     Pub/sub hub, WebSocket protocol models
 │   │   │   └── catalog.py      Module registry (status shown in the UI)
 │   │   ├── api/                Thin routers: system.py, realtime.py, deps.py
-│   │   ├── modules/            One package per product module (added per milestone)
+│   │   ├── db/                 Engine (WAL pragmas), UTC column type, Alembic migrations
+│   │   ├── modules/            One package per product module (activity/ since M3)
 │   │   ├── main.py             create_app() factory + lifespan
 │   │   └── __main__.py         `nexus-hash` CLI entrypoint
 │   └── tests/                  pytest suite (unit + HTTP/WebSocket integration)
@@ -168,7 +169,7 @@ client measures round-trip latency exactly, with no FIFO guessing and no clock-s
 | Topic | Publisher | Milestone |
 |---|---|---|
 | `system` | heartbeat: uptime, version, connection count | **1 (live)** |
-| `activity` | activity log entries | 3 |
+| `activity` | persisted activity log entries | **3 (live)** |
 | `hashlab` | simulation job progress and results | 4 |
 | `hardware` | telemetry samples | 5 |
 | `network` | network snapshots | 6 |
@@ -372,13 +373,61 @@ Each panel owns its loading, empty, stale and error states.
 
 ---
 
-## 6. Data model (M3, SQLite)
+## 6. Data model and persistence (M3)
 
-SQLAlchemy 2.0 with Alembic migrations. WAL mode is on. Timestamps are UTC ISO-8601.
+See [ADR 0006](adr/0006-persistence-sqlite-alembic.md).
+
+* **Engine.** SQLite through SQLAlchemy 2.x async, using `aiosqlite`, which keeps the event loop
+  free and lets services publish to the realtime hub safely. Every connection sets
+  `journal_mode=WAL`, `synchronous=NORMAL`, `foreign_keys=ON` and `busy_timeout=5000`.
+* **Migrations.**
+  - Alembic scripts ship inside the package (`nexus_hash/db/migrations`) and are applied
+    programmatically at startup. With `NEXUS_DB_AUTO_MIGRATE=false`, an outdated schema stops
+    startup with a clear message instead.
+  - Migrations are self-contained snapshots: they never import app models.
+  - A test compares the models against the migrated schema (autogenerate diff), so schema drift
+    fails CI.
+* **Time.** `UTCDateTime` stores naive UTC and returns aware UTC. Naive input raises an error
+  instead of being guessed at.
+* **Failure modes.**
+  - `/health` runs `SELECT 1` with a 2 s timeout.
+  - SQLAlchemy `OperationalError` (locked, missing or corrupt database) becomes a 503 envelope;
+    driver details stay in the logs.
+  - A failing retention run is logged and retried, never fatal.
+* **Isolation in tests.** Every test gets its own temporary database file, including settings
+  built from the environment.
+
+### Activity log (implemented)
+
+| Column | Notes |
+|---|---|
+| `id` | Integer PK, used for keyset pagination (`before_id`) |
+| `ts` | UTC timestamp |
+| `level` | `info` · `success` · `warning` · `error` (CHECK constraint) |
+| `category` | `system` · `database` · `hashlab` · `hardware` · `network` · `profitability` · `intelligence` · `core` (CHECK) |
+| `actor` | `system` or `user` (an action the user initiated, e.g. a consented job) (CHECK) |
+| `message` / `detail` | ≤ 500 / ≤ 2,000 characters |
+| `context` | Optional JSON, ≤ 4 KB, for structured references such as job IDs |
+
+Indexes cover `ts`, `(category, id)` and `(level, id)`.
+
+* **Writers.** Entries are written **only by backend services** (`ActivityService.record`), which
+  persist each entry and then publish it on the `activity` topic. The HTTP API is read-only:
+  `GET /api/v1/activity?limit&before_id&level&category`.
+* **Real events only.** In M3 that means server start and stop, schema migrations, and retention
+  runs. Each later module records its own: jobs started or finished, consent granted, provider
+  outages.
+* **Retention.** A background job deletes entries older than `NEXUS_ACTIVITY_RETENTION_DAYS`, then
+  trims to `NEXUS_ACTIVITY_MAX_ENTRIES`, and records what it removed.
+* **Frontend.** The dashboard feed merges server entries with this tab's session observations,
+  deduplicated by server ID. It receives every live entry through `RealtimeConnection.onEvent`, so a
+  burst between renders isn't dropped, and it backfills from the API after a reconnect. The
+  `/activity` page adds filters and "load older" pagination.
+
+### Planned tables (added by the milestone that needs them)
 
 | Table | Purpose |
 |---|---|
-| `activity_log` | User-visible audit trail: who/what, action, outcome, timestamp |
 | `telemetry_samples` | Down-sampled hardware metrics (retention-bounded) |
 | `network_snapshots` | Network values plus source, `as_of` and stale flag |
 | `simulation_runs` | HashLab job parameters, limits, consent flag, results, duration |

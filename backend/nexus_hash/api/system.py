@@ -16,6 +16,7 @@ from nexus_hash.core.catalog import get_module as find_module
 from nexus_hash.core.config import Environment
 from nexus_hash.core.errors import ErrorResponse, NotFoundError
 from nexus_hash.core.realtime import Topic
+from nexus_hash.db.engine import check_database
 
 router = APIRouter(prefix="/system", tags=["system"])
 
@@ -58,6 +59,12 @@ class RealtimeInfo(BaseModel):
     connections: int
 
 
+class DatabaseInfo(BaseModel):
+    schema_revision: str | None
+    activity_retention_days: int
+    activity_max_entries: int
+
+
 class SystemInfo(BaseModel):
     name: str
     tagline: str
@@ -67,6 +74,7 @@ class SystemInfo(BaseModel):
     features: FeatureFlags
     limits: Limits
     realtime: RealtimeInfo
+    database: DatabaseInfo
     disclaimers: list[str]
 
 
@@ -84,7 +92,12 @@ def _realtime_check(request: Request) -> CheckStatus:
 
 @router.get("/health", response_model=HealthResponse, summary="Liveness and readiness")
 async def health(request: Request, settings: SettingsDep) -> HealthResponse:
-    checks: dict[str, CheckStatus] = {"api": "ok", "realtime": _realtime_check(request)}
+    database_ok = await check_database(getattr(request.app.state, "db_engine", None))
+    checks: dict[str, CheckStatus] = {
+        "api": "ok",
+        "realtime": _realtime_check(request),
+        "database": "ok" if database_ok else "down",
+    }
     overall: CheckStatus = "ok" if all(value == "ok" for value in checks.values()) else "degraded"
     return HealthResponse(
         status=overall,
@@ -97,7 +110,7 @@ async def health(request: Request, settings: SettingsDep) -> HealthResponse:
 
 
 @router.get("/info", response_model=SystemInfo, summary="Build, feature and limit information")
-async def info(settings: SettingsDep, hub: HubDep) -> SystemInfo:
+async def info(request: Request, settings: SettingsDep, hub: HubDep) -> SystemInfo:
     return SystemInfo(
         name=APP_NAME,
         tagline=TAGLINE,
@@ -119,6 +132,11 @@ async def info(settings: SettingsDep, hub: HubDep) -> SystemInfo:
             topics=list(Topic),
             heartbeat_seconds=settings.ws_heartbeat_seconds,
             connections=hub.connection_count,
+        ),
+        database=DatabaseInfo(
+            schema_revision=getattr(request.app.state, "schema_revision", None),
+            activity_retention_days=settings.activity_retention_days,
+            activity_max_entries=settings.activity_max_entries,
         ),
         disclaimers=list(DISCLAIMERS),
     )

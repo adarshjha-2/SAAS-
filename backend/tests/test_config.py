@@ -107,7 +107,8 @@ def test_get_settings_is_cached(monkeypatch: pytest.MonkeyPatch) -> None:
 ENV_EXAMPLE = Path(__file__).resolve().parents[2] / ".env.example"
 
 
-def test_env_example_is_valid_and_matches_defaults() -> None:
+def test_env_example_is_valid_and_matches_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("NEXUS_DATABASE_PATH")  # compare the file's value, not the test override
     from_example = Settings(_env_file=ENV_EXAMPLE)  # type: ignore[call-arg]
     defaults = Settings(_env_file=None)  # type: ignore[call-arg]
     assert from_example == defaults
@@ -123,3 +124,20 @@ def test_env_example_documents_every_setting() -> None:
             else [f"NEXUS_{name.upper()}"]
         )
         assert any(f"{candidate}=" in text for candidate in candidates), name
+
+
+@pytest.mark.parametrize("path", [":memory:", "file:memdb?mode=memory"])
+def test_in_memory_database_rejected(path: str) -> None:
+    with pytest.raises(ValidationError, match="in-memory"):
+        make_settings(database_path=path)
+
+
+def test_database_path_must_not_be_a_directory(tmp_path: Path) -> None:
+    with pytest.raises(ValidationError, match="is a directory"):
+        make_settings(database_path=tmp_path)
+
+
+def test_database_urls_derive_from_path(tmp_path: Path) -> None:
+    settings = make_settings(database_path=tmp_path / "x.db")
+    assert settings.database_url == f"sqlite+aiosqlite:///{tmp_path}/x.db"
+    assert settings.database_sync_url == f"sqlite:///{tmp_path}/x.db"

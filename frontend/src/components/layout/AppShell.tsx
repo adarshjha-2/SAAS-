@@ -2,6 +2,7 @@ import { X } from "lucide-react";
 import { useState } from "react";
 import { Outlet } from "react-router";
 
+import { useServerActivitySync } from "@/hooks/useActivity";
 import { useActivityRecorder } from "@/hooks/useActivityRecorder";
 import { cn } from "@/lib/format";
 
@@ -11,6 +12,7 @@ import { TopBar } from "./TopBar";
 export function AppShell() {
   const [menuOpen, setMenuOpen] = useState(false);
   useActivityRecorder();
+  useServerActivitySync();
 
   return (
     <div className="flex min-h-dvh">

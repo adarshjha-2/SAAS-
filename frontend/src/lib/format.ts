@@ -32,6 +32,13 @@ export function formatClock(t: number): string {
   });
 }
 
+/** Local date and time, e.g. `2026-11-05 14:03:27`. */
+export function formatDateTime(t: number): string {
+  const date = new Date(t);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${formatClock(t)}`;
+}
+
 /** Milliseconds with sensible precision: `0.8 ms`, `12 ms`, `1.2 s`. */
 export function formatMs(ms: number): string {
   if (ms >= 1_000) return `${(ms / 1_000).toFixed(1)} s`;

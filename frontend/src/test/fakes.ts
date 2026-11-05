@@ -1,4 +1,10 @@
-import type { HealthResponse, ModuleDescriptor, SystemInfo } from "@/types/api";
+import type {
+  ActivityPage,
+  HealthResponse,
+  ModuleDescriptor,
+  ServerActivityEntry,
+  SystemInfo,
+} from "@/types/api";
 
 /** A controllable stand-in for the browser WebSocket. */
 export class FakeSocket {
@@ -63,7 +69,7 @@ export const healthFixture: HealthResponse = {
   environment: "development",
   uptime_seconds: 42,
   server_time: "2026-11-05T00:00:00Z",
-  checks: { api: "ok", realtime: "ok" },
+  checks: { api: "ok", realtime: "ok", database: "ok" },
 };
 
 export const infoFixture: SystemInfo = {
@@ -80,6 +86,7 @@ export const infoFixture: SystemInfo = {
     heartbeat_seconds: 5,
     connections: 0,
   },
+  database: { schema_revision: "0001", activity_retention_days: 30, activity_max_entries: 50_000 },
   disclaimers: [
     "HashLab is an educational simulator. Simulated hashes are never submitted to the Bitcoin network and cannot earn bitcoin.",
     "Profitability figures are estimates based on stated assumptions and live data that changes constantly. They are not a guarantee of earnings.",
@@ -104,6 +111,37 @@ export const modulesFixture: ModuleDescriptor[] = [
   api_prefix: null,
 }));
 
+export function serverEntry(id: number, overrides: Partial<ServerActivityEntry> = {}): ServerActivityEntry {
+  return {
+    id,
+    ts: new Date(Date.UTC(2026, 10, 5, 9, 0, id)).toISOString(),
+    level: "info",
+    category: "system",
+    actor: "system",
+    message: `Server event ${id}`,
+    detail: null,
+    context: null,
+    ...overrides,
+  };
+}
+
+export const activityFixture: ActivityPage = {
+  items: [
+    serverEntry(2, { message: "NEXUS HASH AI 0.1.0 started", detail: "Environment: development" }),
+    serverEntry(1, {
+      level: "success",
+      category: "database",
+      message: "Database schema migrated to revision 0001",
+    }),
+  ],
+  next_before_id: null,
+};
+
+/** The URL of a fetch() argument, whatever its form. */
+export function urlOf(input: RequestInfo | URL): string {
+  return typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+}
+
 export function jsonResponse(body: unknown, status = 200, headers: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -117,10 +155,10 @@ export function backendFetch(overrides: Partial<Record<string, () => Response>> 
     "/api/v1/system/health": () => jsonResponse(healthFixture),
     "/api/v1/system/info": () => jsonResponse(infoFixture),
     "/api/v1/system/modules": () => jsonResponse(modulesFixture),
+    "/api/v1/activity": () => jsonResponse(activityFixture),
   };
   return (input: RequestInfo | URL): Promise<Response> => {
-    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-    const path = new URL(url, "http://localhost").pathname;
+    const path = new URL(urlOf(input), "http://localhost").pathname;
     const handler = overrides[path] ?? routes[path];
     return Promise.resolve(
       handler ? handler() : jsonResponse({ error: { code: "not_found", message: "Not Found" } }, 404),
