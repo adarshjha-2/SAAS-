@@ -31,7 +31,16 @@ export const routes: RouteObject[] = [
           return { Component: HashLabPage };
         },
       },
-      ...NAV_ITEMS.filter((item) => item.path !== "/" && item.key !== "hashlab").map((item): RouteObject => ({
+      {
+        path: "hardware",
+        lazy: async () => {
+          const { HardwarePage } = await import("@/pages/hardware/HardwarePage");
+          return { Component: HardwarePage };
+        },
+      },
+      ...NAV_ITEMS.filter(
+        (item) => item.path !== "/" && item.key !== "hashlab" && item.key !== "hardware",
+      ).map((item): RouteObject => ({
         path: item.path.slice(1),
         lazy: async () => {
           const { ModulePage } = await import("@/pages/ModulePage");

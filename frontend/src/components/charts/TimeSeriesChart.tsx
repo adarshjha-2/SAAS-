@@ -33,6 +33,8 @@ interface TimeSeriesChartProps {
   formatValue: (value: number) => string;
   /** Formatter for clean y-axis ticks; defaults to `formatValue`. */
   formatTick?: (value: number) => string;
+  /** Fixed upper bound for bounded quantities (e.g. 100 for percentages). */
+  yMax?: number;
   height?: number;
   emptyMessage?: string;
 }
@@ -112,6 +114,7 @@ export function TimeSeriesChart({
   title,
   formatValue,
   formatTick = formatValue,
+  yMax,
   height = 220,
   emptyMessage = "Collecting samples…",
 }: TimeSeriesChartProps) {
@@ -124,7 +127,7 @@ export function TimeSeriesChart({
       if (typeof value === "number" && value > peak) peak = value;
     }
   }
-  const yTicks = niceTicks(peak);
+  const yTicks = niceTicks(yMax ?? peak);
 
   return (
     <div>

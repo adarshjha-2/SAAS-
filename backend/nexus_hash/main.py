@@ -13,7 +13,7 @@ import asyncio
 import contextlib
 import logging
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -37,6 +37,9 @@ from nexus_hash.db.migrate import current_revision, head_revision, upgrade_to_he
 from nexus_hash.modules.activity import router as activity_api
 from nexus_hash.modules.activity.schemas import ActivityCategory, ActivityLevel, NewActivity
 from nexus_hash.modules.activity.service import ActivityService, run_retention
+from nexus_hash.modules.hardware import router as hardware_api
+from nexus_hash.modules.hardware.probe import Probe, SystemProbe
+from nexus_hash.modules.hardware.service import HardwareMonitor
 from nexus_hash.modules.hashlab import router as hashlab_api
 from nexus_hash.modules.hashlab.jobs import ExecutorFactory, HashLabJobs, process_executor
 
@@ -99,6 +102,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         executor_factory=app.state.hashlab_executor_factory,
     )
     await hashlab.recover_interrupted()
+
+    hardware: HardwareMonitor | None = None
+    if settings.hardware_monitoring_enabled:
+        probe = await asyncio.to_thread(app.state.hardware_probe_factory)
+        hardware = app.state.hardware = HardwareMonitor(
+            probe, hub, create_session_factory(app.state.db_engine), activity, settings
+        )
+        await hardware.announce()
     await activity.record(
         NewActivity(
             level=ActivityLevel.INFO,
@@ -123,6 +134,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         ),
         name="nexus-activity-retention",
     )
+    if hardware is not None:
+        tasks["hardware_monitor"] = asyncio.create_task(
+            hardware.run(), name="nexus-hardware-monitor"
+        )
     logger.info(
         "%s %s started",
         APP_NAME,
@@ -139,6 +154,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             with contextlib.suppress(asyncio.CancelledError):
                 await task
         tasks.clear()
+        if hardware is not None:
+            try:
+                await hardware.flush()  # keep the partial window
+            except Exception:
+                logger.exception("could not persist the last hardware window")
         try:
             await activity.record(
                 NewActivity(
@@ -157,6 +177,7 @@ def create_app(
     settings: Settings | None = None,
     *,
     hashlab_executor_factory: ExecutorFactory = process_executor,
+    hardware_probe_factory: Callable[[], Probe] = SystemProbe,
 ) -> FastAPI:
     settings = settings or get_settings()
     configure_logging(settings.log_level, settings.log_format, settings.secret_values())
@@ -177,6 +198,8 @@ def create_app(
     app.state.started_at = time.monotonic()
     app.state.background_tasks = {}
     app.state.hashlab_executor_factory = hashlab_executor_factory
+    app.state.hardware_probe_factory = hardware_probe_factory
+    app.state.hardware = None
 
     install_exception_handlers(app)
     install_database_error_handlers(app)
@@ -199,5 +222,6 @@ def create_app(
     app.include_router(system_api.router, prefix=f"/api/{API_VERSION}")
     app.include_router(activity_api.router, prefix=f"/api/{API_VERSION}")
     app.include_router(hashlab_api.router, prefix=f"/api/{API_VERSION}")
+    app.include_router(hardware_api.router, prefix=f"/api/{API_VERSION}")
     app.include_router(realtime_api.router)
     return app

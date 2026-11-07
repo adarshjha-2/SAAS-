@@ -94,6 +94,12 @@ class Settings(BaseSettings):
     # Jobs that may use one CPU core for longer than this need explicit consent.
     hashlab_consent_threshold_seconds: float = Field(default=2.0, ge=0.0, le=60.0)
 
+    # --- Hardware Intelligence (read-only monitoring) ----------------------
+    hardware_monitoring_enabled: bool = True
+    hardware_sample_seconds: float = Field(default=2.0, ge=0.5, le=60.0)
+    hardware_persist_seconds: float = Field(default=60.0, ge=10.0, le=3_600.0)
+    hardware_retention_days: int = Field(default=7, ge=1, le=365)
+
     # --- Secrets (backend only; never sent to the frontend) ----------------
     anthropic_api_key: SecretStr | None = Field(
         default=None,

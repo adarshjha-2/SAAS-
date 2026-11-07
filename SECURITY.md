@@ -71,6 +71,17 @@ guarantees, how each guarantee is enforced, and how to report a problem.
 - **Failure containment.** A worker crash fails only that run, with a generic message; details stay
   in the server log. The server stays healthy.
 
+## Controls implemented (Milestone 5: Hardware Intelligence)
+
+- **Read-only, unprivileged monitoring.** It only reads counters and sensor files. It never writes
+  to hardware, never needs root, and never generates load. RAPL counters that need root are
+  reported as unavailable, not worked around.
+- **Measured, visible overhead.** About 0.3 ms per sample, and about 0.3% of a core for the whole
+  idle server. The page shows the server process's own CPU and memory use.
+- **Truthful readings.** Unavailable metrics are `null` with a stated reason, never zero.
+- **Data minimisation and an off switch.** Hardware history is aggregated per minute and kept for 7
+  days (configurable). Monitoring can be turned off with `NEXUS_HARDWARE_MONITORING_ENABLED=false`.
+
 ## Planned controls
 
 - M6: outbound host allowlist, timeouts and circuit breakers (ADR 0003).

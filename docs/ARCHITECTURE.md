@@ -171,7 +171,7 @@ client measures round-trip latency exactly, with no FIFO guessing and no clock-s
 | `system` | heartbeat: uptime, version, connection count | **1 (live)** |
 | `activity` | persisted activity log entries | **3 (live)** |
 | `hashlab` | simulation run progress and results | **4 (live)** |
-| `hardware` | telemetry samples | 5 |
+| `hardware` | hardware samples (every 2 s) | **5 (live)** |
 | `network` | network snapshots | 6 |
 | `intelligence` | recommendations and anomalies | 8 |
 
@@ -337,18 +337,57 @@ and Simulated badges, and the dashboard's Mining simulation panel streams the li
 | Another run already active | 409 `conflict` |
 | Unknown request fields | 422 `validation_error` |
 
-### 5.2 Hardware Intelligence (M5)
+### 5.2 Hardware Intelligence (M5, **online**)
 
-* **Read-only sources.** `psutil` provides CPU (total and per-core), RAM, swap and load. NVIDIA GPUs
-  use NVML (`nvidia-ml-py`) when present. Temperatures come from `psutil.sensors_temperatures()`
-  where the OS exposes them. Power comes from NVML or Intel RAPL (`/sys/class/powercap`) when
-  readable.
-* **Capability matrix.** Each metric is reported as `{value, unit, supported, source, reason}`. For
-  example, the dev container has no GPU, so it reports `supported: false,
-  reason: "no NVIDIA driver"`, and the UI shows "Not available on this machine" rather than `0`.
-* **Sampling.** A sampler runs at 1–2 s into an in-memory ring buffer. It publishes on the
-  `hardware` topic and writes down-sampled history to SQLite with a retention policy.
-* **Safety.** Monitoring never generates load and never needs elevated privileges.
+Code lives in `nexus_hash/modules/hardware/`:
+
+| File | Contents |
+|---|---|
+| `probe.py` | Sources |
+| `service.py` | Monitor |
+| `models.py` | Aggregated history (migration `0003`) |
+| `router.py` | Read-only API |
+
+**Sources, each detected once at startup and each able to explain its absence:**
+
+| Metric | Source | When unavailable |
+|---|---|---|
+| CPU (total and per core), frequency, load average, memory, swap | `psutil`, `os.getloadavg` | "No swap space is configured", … |
+| Temperatures | `psutil.sensors_temperatures()` (prefers CPU sensors, drops implausible readings) | "No temperature sensors are exposed; virtual machines usually hide them" |
+| NVIDIA GPU utilisation, memory, temperature, power | NVML (`nvidia-ml-py`), each field optional per card | "No NVIDIA driver (NVML library) found on this machine" |
+| CPU package power | Intel RAPL energy counters (`/sys/class/powercap`), with counter wraparound handled | "No RAPL power interface…" / "not readable without root" |
+| Container memory limit | cgroup v2 `memory.max` or v1 `limit_in_bytes`, when lower than physical memory | (omitted) |
+
+**The capability matrix** (`GET /hardware/specs`) lists every metric as
+`{supported, source, reason}`. Samples carry `null` for anything unsupported, never `0`, and tests
+enforce that samples agree with the matrix. On the development VM, CPU, frequency, load and memory
+are available; swap, temperatures, GPU and power are not, each with its reason.
+
+**Monitor:**
+
+* A sample every `NEXUS_HARDWARE_SAMPLE_SECONDS` (2 s). It is read in a worker thread so sensor
+  file reads never block the event loop.
+* Samples go into a 10-minute in-memory ring (`GET /hardware/live`) and are streamed on the
+  `hardware` topic. Clients receive every sample through `onEvent`.
+* Every `NEXUS_HARDWARE_PERSIST_SECONDS` (60 s), the window is aggregated into one
+  `hardware_samples` row: CPU average and max, memory average, load, max temperature, average power
+  and average GPU utilisation, with unsupported metrics stored as null.
+* Rows older than `NEXUS_HARDWARE_RETENTION_DAYS` (7) are deleted on each write. The partial window
+  is flushed on shutdown.
+* `GET /hardware/history?hours=` serves the aggregated rows. The UI inserts gaps where the server
+  was not running.
+
+**Behaviour:**
+
+* **Start-up audit.** One activity entry lists what is measurable here and why the rest isn't.
+* **Failure handling.** A failing sample is logged, with a rate limit on the logging, and skipped.
+  When monitoring is disabled, the endpoints answer 503 with the setting's name.
+* **Overhead, measured.** One sample takes about 0.3 ms. With monitoring, heartbeat and idle
+  sockets, the whole server process uses about 0.3% of one core at idle. The page shows the server
+  process's own CPU and memory, so the overhead is visible.
+* **Cross-checked.** During a HashLab benchmark, the monitor independently showed one core near
+  80% and overall CPU rising by about one core's share.
+* **Safety.** Monitoring is read-only: no load, no privileged access, nothing written to hardware.
 
 ### 5.3 Bitcoin Network Intelligence (M6)
 
@@ -475,11 +514,22 @@ Indexes cover `ts`, `(category, id)` and `(level, id)`.
   burst between renders isn't dropped, and it backfills from the API after a reconnect. The
   `/activity` page adds filters and "load older" pagination.
 
+### Hardware history (implemented, M5)
+
+`hardware_samples` (migration `0003`) stores one aggregated row per window: `ts`,
+`window_seconds`, `samples`, `cpu_avg`, `cpu_max`, `memory_percent_avg`, and nullable `load1_avg`,
+`temperature_max_c`, `power_avg_w` and `gpu_utilization_avg`. It is indexed on `ts`, with
+retention by age.
+
+### Simulation runs (implemented, M4)
+
+`simulation_runs` (migration `0002`) records one row per HashLab run: parameters, consent,
+status, attempts, rate, best and found hashes, and timestamps.
+
 ### Planned tables (added by the milestone that needs them)
 
 | Table | Purpose |
 |---|---|
-| `telemetry_samples` | Down-sampled hardware metrics (retention-bounded) |
 | `network_snapshots` | Network values plus source, `as_of` and stale flag |
 | `simulation_runs` | HashLab job parameters, limits, consent flag, results, duration |
 | `profitability_scenarios` | Saved calculator inputs plus assumption set |

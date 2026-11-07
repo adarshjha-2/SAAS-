@@ -10,8 +10,8 @@ moves to `online` only when its acceptance criteria are met and tested.
 | 2 | Frontend design system & command dashboard | ✅ Complete |
 | 3 | Backend persistence (SQLite) & activity log | ✅ Complete |
 | 4 | HashLab proof-of-work simulator | ✅ Complete |
-| 5 | Hardware Intelligence | ⏭ Next |
-| 6 | Bitcoin Network Intelligence | Planned |
+| 5 | Hardware Intelligence | ✅ Complete |
+| 6 | Bitcoin Network Intelligence | ⏭ Next |
 | 7 | Profitability Intelligence | Planned |
 | 8 | Nexus Intelligence + NEXUS CORE AI | Planned |
 | 9 | Testing, security & optimisation | Planned |
@@ -69,11 +69,24 @@ moves to `online` only when its acceptance criteria are met and tested.
 - HashLab page with the consent dialog, plus a live Mining simulation panel on the dashboard. Every
   output is labelled simulated.
 
-### M5: Hardware Intelligence
+### M5: Hardware Intelligence ✅
 
-- psutil, NVML and RAPL providers with an explicit capability matrix. Sampler, ring buffer and
-  history.
-- Unsupported metrics shown as unavailable, never as zero.
+- Probes: psutil (CPU, per-core, frequency, load, memory, swap), sensors, NVML GPUs, RAPL power
+  (with counter wraparound) and the cgroup memory limit. Each reports whether it's supported, its
+  source, and the reason if not.
+- Monitor:
+  - 2 s samples, read off the event loop, into a 10-minute ring streamed on the `hardware` topic
+  - 1-minute aggregates in `hardware_samples` (migration `0003`), with 7-day retention and a
+    shutdown flush
+  - a start-up capability entry in the activity log
+- Hardware page:
+  - live tiles; anything unavailable shows "Not available" with its reason, never 0
+  - live utilisation chart on a fixed 0–100% scale, and per-core meters
+  - history with window presets and gaps for downtime
+  - capability matrix, machine specs, and the server's own overhead
+- Live Hardware panel on the dashboard.
+- Measured: 0.3 ms per sample and about 0.3% of a core at idle. Cross-checked against a HashLab
+  benchmark.
 
 ### M6: Bitcoin Network Intelligence
 

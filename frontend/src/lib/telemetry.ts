@@ -111,3 +111,22 @@ export function resampleSeries(
 export function latest(samples: readonly Sample[]): Sample | undefined {
   return samples[samples.length - 1];
 }
+
+/**
+ * Insert an all-null row wherever consecutive rows are further apart than
+ * `maxGapMs`, so charts draw a visible break (e.g. while the server was off)
+ * instead of a line that implies data existed.
+ */
+export function withGaps(rows: readonly SeriesRow[], maxGapMs: number, keys: readonly string[]): SeriesRow[] {
+  const out: SeriesRow[] = [];
+  rows.forEach((row, index) => {
+    const previous = rows[index - 1];
+    if (previous && row.t - previous.t > maxGapMs) {
+      const gap: SeriesRow = { t: previous.t + (row.t - previous.t) / 2 };
+      for (const key of keys) gap[key] = null;
+      out.push(gap);
+    }
+    out.push(row);
+  });
+  return out;
+}

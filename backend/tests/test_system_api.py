@@ -80,7 +80,7 @@ def test_catalog_milestones_are_ordered() -> None:
 
 def test_delivered_modules_are_online() -> None:
     online = {module.key for module in MODULES if module.status is ModuleStatus.ONLINE}
-    assert online == {"command", "hashlab"}
+    assert online == {"command", "hashlab", "hardware"}
 
 
 def test_get_single_module(client: TestClient) -> None:

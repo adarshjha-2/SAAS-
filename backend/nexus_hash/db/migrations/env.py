@@ -17,6 +17,7 @@ from sqlalchemy.pool import NullPool
 from nexus_hash.core.config import get_settings
 from nexus_hash.db.base import Base, UTCDateTime
 from nexus_hash.modules.activity import models as _activity_models  # noqa: F401 (registers tables)
+from nexus_hash.modules.hardware import models as _hardware_models  # noqa: F401 (registers tables)
 from nexus_hash.modules.hashlab import models as _hashlab_models  # noqa: F401 (registers tables)
 
 target_metadata = Base.metadata

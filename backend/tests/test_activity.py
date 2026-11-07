@@ -234,8 +234,12 @@ async def test_retention_job_survives_failures(sessions: async_sessionmaker[Asyn
 def test_startup_records_real_events(client: TestClient) -> None:
     body = client.get("/api/v1/activity").json()
     messages = [item["message"] for item in body["items"]]
-    assert messages[0] == "NEXUS HASH AI 0.1.0 started"
-    assert messages[1] == f"Database schema migrated to revision {head_revision()}"
+    # Newest first: ready, then each module's start-up report, then the migration.
+    assert messages == [
+        "NEXUS HASH AI 0.1.0 started",
+        "Hardware monitoring started",
+        f"Database schema migrated to revision {head_revision()}",
+    ]
     assert body["next_before_id"] is None
     started = body["items"][0]
     assert started["category"] == "system"

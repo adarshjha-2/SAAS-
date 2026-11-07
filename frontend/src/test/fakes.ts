@@ -1,3 +1,4 @@
+import type { HardwareHistory, HardwareSample, HardwareSpecs } from "@/types/hardware";
 import type { HashLabLimits, HeaderPreset, JobView } from "@/types/hashlab";
 import type {
   ActivityPage,
@@ -108,7 +109,9 @@ export const modulesFixture: ModuleDescriptor[] = [
   name: name as string,
   summary: `${name as string} summary.`,
   milestone: milestone as number,
-  status: key === "command" || key === "hashlab" ? ("online" as const) : ("planned" as const),
+  status: ["command", "hashlab", "hardware"].includes(key as string)
+    ? ("online" as const)
+    : ("planned" as const),
   api_prefix: null,
 }));
 
@@ -191,6 +194,107 @@ export function jobFixture(overrides: Partial<JobView> = {}): JobView {
   };
 }
 
+/** A machine like the development VM: no sensors, GPU, power interface or swap. */
+export const hardwareSpecsFixture: HardwareSpecs = {
+  hostname: "nexus-vm",
+  os: "Linux 6.18",
+  architecture: "x86_64",
+  cpu_model: "Intel(R) Xeon(R) Processor @ 2.10GHz",
+  cpu_logical_cores: 4,
+  cpu_physical_cores: 4,
+  cpu_max_frequency_mhz: null,
+  memory_total_bytes: 16 * 1024 ** 3,
+  memory_limit_bytes: null,
+  swap_total_bytes: 0,
+  virtualized: true,
+  boot_time: "2026-11-07T08:00:00Z",
+  gpus: [],
+  capabilities: [
+    { key: "cpu", label: "CPU utilisation", supported: true, source: "psutil", reason: null },
+    { key: "cpu_frequency", label: "CPU frequency", supported: true, source: "psutil", reason: null },
+    { key: "load_average", label: "Load average", supported: true, source: "os.getloadavg", reason: null },
+    { key: "memory", label: "Memory", supported: true, source: "psutil", reason: null },
+    { key: "swap", label: "Swap", supported: false, source: null, reason: "No swap space is configured." },
+    {
+      key: "temperature",
+      label: "Temperatures",
+      supported: false,
+      source: null,
+      reason: "No temperature sensors are exposed; virtual machines usually hide them.",
+    },
+    {
+      key: "gpu",
+      label: "GPU",
+      supported: false,
+      source: null,
+      reason: "No NVIDIA driver (NVML library) found on this machine.",
+    },
+    {
+      key: "power",
+      label: "Power draw",
+      supported: false,
+      source: null,
+      reason: "No RAPL power interface (/sys/class/powercap) on this machine.",
+    },
+  ],
+};
+
+export function hardwareSample(
+  cpu: number,
+  ts: string,
+  overrides: Partial<HardwareSample> = {},
+): HardwareSample {
+  return {
+    ts,
+    cpu_percent: cpu,
+    cpu_per_core: [cpu, cpu + 10, cpu - 1, 0.5],
+    cpu_frequency_mhz: 2100,
+    load_average: [0.42, 0.3, 0.2],
+    memory: {
+      total_bytes: 16 * 1024 ** 3,
+      used_bytes: 4 * 1024 ** 3,
+      available_bytes: 12 * 1024 ** 3,
+      percent: 25,
+    },
+    swap: null,
+    temperatures: null,
+    gpus: null,
+    power_w: null,
+    process: { cpu_percent: 0.4, rss_bytes: 80 * 1024 ** 2 },
+    ...overrides,
+  };
+}
+
+export const hardwareHistoryFixture: HardwareHistory = {
+  hours: 24,
+  points: [
+    {
+      ts: "2026-11-07T09:00:00Z",
+      window_seconds: 60,
+      samples: 30,
+      cpu_avg: 5,
+      cpu_max: 9,
+      memory_percent_avg: 24,
+      load1_avg: 0.3,
+      temperature_max_c: null,
+      power_avg_w: null,
+      gpu_utilization_avg: null,
+    },
+    {
+      ts: "2026-11-07T09:01:00Z",
+      window_seconds: 60,
+      samples: 30,
+      cpu_avg: 7,
+      cpu_max: 12,
+      memory_percent_avg: 25,
+      load1_avg: 0.4,
+      temperature_max_c: null,
+      power_avg_w: null,
+      gpu_utilization_avg: null,
+    },
+  ],
+};
+
 export function jsonResponse(body: unknown, status = 200, headers: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -208,6 +312,13 @@ export function backendFetch(overrides: Partial<Record<string, () => Response>> 
     "/api/v1/hashlab/limits": () => jsonResponse(limitsFixture),
     "/api/v1/hashlab/presets": () => jsonResponse([genesisPreset]),
     "/api/v1/hashlab/jobs": () => jsonResponse([]),
+    "/api/v1/hardware/specs": () => jsonResponse(hardwareSpecsFixture),
+    "/api/v1/hardware/live": () =>
+      jsonResponse({
+        interval_seconds: 2,
+        samples: [hardwareSample(10, "2026-11-07T09:00:00Z"), hardwareSample(12.5, "2026-11-07T09:00:02Z")],
+      }),
+    "/api/v1/hardware/history": () => jsonResponse(hardwareHistoryFixture),
   };
   return (input: RequestInfo | URL): Promise<Response> => {
     const path = new URL(urlOf(input), "http://localhost").pathname;

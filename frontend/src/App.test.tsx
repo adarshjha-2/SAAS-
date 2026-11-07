@@ -30,7 +30,7 @@ describe("Nexus Command dashboard", () => {
     expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent("Command Center");
     expect(await screen.findByText("API online")).toBeInTheDocument();
     expect(await statusTiles().findByText("OFFLINE MODE")).toBeInTheDocument();
-    expect(await statusTiles().findByText("2 / 7")).toBeInTheDocument();
+    expect(await statusTiles().findByText("3 / 7")).toBeInTheDocument();
     for (const disclaimer of infoFixture.disclaimers) {
       expect(screen.getByText(disclaimer)).toBeInTheDocument();
     }
@@ -83,10 +83,11 @@ describe("Nexus Command dashboard", () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(backendFetch());
     renderApp("/");
     const section = within(await screen.findByRole("region", { name: "Module intelligence" }));
-    expect(await section.findByText("Arrives in Milestone 5")).toBeInTheDocument();
+    expect(await section.findByText("Open Hardware Intelligence →")).toBeInTheDocument();
     expect(section.getByText("Arrives in Milestone 6")).toBeInTheDocument();
     expect(section.getByText("Arrives in Milestone 8")).toBeInTheDocument();
-    expect(section.getAllByText("Planned")).toHaveLength(3);
+    expect(section.getAllByText("Planned")).toHaveLength(2);
+    expect(section.queryByText("Arrives in Milestone 5")).not.toBeInTheDocument();
     // HashLab shipped, so its panel shows real (here: no) runs instead of a placeholder.
     expect(await section.findByText("No simulation runs yet")).toBeInTheDocument();
     expect(section.queryByText("Arrives in Milestone 4")).not.toBeInTheDocument();
@@ -97,10 +98,11 @@ describe("Nexus Command dashboard", () => {
     renderApp("/");
     const nav = await primaryNav();
     expect(within(nav).getAllByRole("link")).toHaveLength(7);
-    expect(await within(nav).findByText("M5")).toBeInTheDocument();
+    expect(await within(nav).findByText("M6")).toBeInTheDocument();
     // Online modules show no milestone marker.
     expect(within(nav).queryByText("M2")).not.toBeInTheDocument();
     expect(within(nav).queryByText("M4")).not.toBeInTheDocument();
+    expect(within(nav).queryByText("M5")).not.toBeInTheDocument();
     expect(within(nav).getByRole("link", { name: /NEXUS CORE/ })).toHaveAttribute("href", "/core");
   });
 
@@ -165,11 +167,11 @@ describe("Nexus Command dashboard", () => {
 describe("routing", () => {
   it("renders a planned module honestly, without fake metrics", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(backendFetch());
-    renderApp("/hardware");
+    renderApp("/network");
     expect(
-      await screen.findByRole("heading", { level: 1, name: "Hardware Intelligence" }),
+      await screen.findByRole("heading", { level: 1, name: "Bitcoin Network Intelligence" }),
     ).toBeInTheDocument();
-    expect(await screen.findAllByText("Milestone 5")).toHaveLength(2);
+    expect(await screen.findAllByText("Milestone 6")).toHaveLength(2);
     expect(screen.getByText(/never shows placeholder figures/)).toBeInTheDocument();
   });
 

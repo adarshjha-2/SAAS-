@@ -60,7 +60,8 @@ MODULES: tuple[ModuleDescriptor, ...] = (
             "platform exposes them."
         ),
         milestone=5,
-        status=ModuleStatus.PLANNED,
+        status=ModuleStatus.ONLINE,
+        api_prefix="/api/v1/hardware",
     ),
     ModuleDescriptor(
         key="network",
