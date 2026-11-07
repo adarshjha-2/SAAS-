@@ -1,0 +1,134 @@
+@import "tailwindcss";
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/space-grotesk";
+@import "@fontsource-variable/jetbrains-mono";
+
+/*
+ * NEXUS HASH AI design tokens.
+ * Deep-black surfaces, electric orange ("ember") for primary emphasis and
+ * action, cyan ("flux") for live data and telemetry.
+ */
+@theme {
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk Variable", "Inter Variable", ui-sans-serif, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, monospace;
+
+  --color-void: #030407;
+  --color-abyss: #06080d;
+  --color-panel: #0a0d14;
+  --color-panel-raised: #0f131c;
+  --color-edge: #1a2030;
+  --color-edge-strong: #283044;
+
+  --color-ink: #e8ecf4;
+  --color-ink-muted: #8d97ab;
+  --color-ink-faint: #5a6479;
+
+  --color-ember-300: #ffa766;
+  --color-ember-400: #ff8a3d;
+  --color-ember-500: #ff6a13;
+  --color-ember-600: #e65500;
+  --color-ember-900: #3a1604;
+
+  --color-flux-300: #7cf0ff;
+  --color-flux-400: #33e7ff;
+  --color-flux-500: #00e1ff;
+  --color-flux-600: #00b4cc;
+  --color-flux-900: #002a33;
+
+  /*
+   * Data-series palette (categorical, fixed order - never cycled).
+   * Validated for the dark panel surface #0a0d14 with the dataviz palette
+   * checker: lightness band, chroma floor, adjacent CVD separation (worst
+   * deltaE 16.0), normal-vision floor and >=3:1 contrast all pass. The neon
+   * brand accents above stay for UI chrome; they are too light for data marks.
+   */
+  --color-series-1: #00a3bb; /* flux  */
+  --color-series-2: #e3611c; /* ember */
+  --color-series-3: #9085e9; /* violet */
+  --color-series-4: #d55181; /* magenta */
+
+  --color-ok: #22d39b;
+  --color-warn: #ffb224;
+  --color-fault: #ff3d5e;
+
+  --shadow-glow-ember: 0 0 0 1px rgb(255 106 19 / 0.35), 0 0 24px -4px rgb(255 106 19 / 0.45);
+  --shadow-glow-flux: 0 0 0 1px rgb(0 225 255 / 0.3), 0 0 24px -6px rgb(0 225 255 / 0.45);
+
+  --animate-pulse-soft: pulse-soft 2.4s ease-in-out infinite;
+  --animate-scan: scan 6s linear infinite;
+  --animate-fade-up: fade-up 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+
+  @keyframes pulse-soft {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.35;
+    }
+  }
+  @keyframes scan {
+    from {
+      transform: translateY(-100%);
+    }
+    to {
+      transform: translateY(100%);
+    }
+  }
+  @keyframes fade-up {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-void font-sans text-ink antialiased;
+    min-height: 100dvh;
+    background-image:
+      radial-gradient(60rem 40rem at -10% -20%, rgb(255 106 19 / 0.09), transparent 60%),
+      radial-gradient(50rem 40rem at 110% 120%, rgb(0 225 255 / 0.07), transparent 60%),
+      linear-gradient(rgb(255 255 255 / 0.018) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(255 255 255 / 0.018) 1px, transparent 1px);
+    background-size:
+      auto,
+      auto,
+      48px 48px,
+      48px 48px;
+    background-attachment: fixed;
+  }
+
+  ::selection {
+    background: rgb(255 106 19 / 0.35);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-flux-500);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@utility font-tabular {
+  font-variant-numeric: tabular-nums;
+}

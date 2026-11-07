@@ -1,0 +1,83 @@
+[project]
+name = "nexus-hash-ai"
+dynamic = ["version"]
+description = "NEXUS HASH AI backend: Bitcoin mining intelligence, proof-of-work simulation and analytics API."
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.7",
+    "sqlalchemy[asyncio]>=2.0.30",
+    "aiosqlite>=0.20",
+    "alembic>=1.13",
+    "psutil>=6.0",
+    "nvidia-ml-py>=12.0",
+]
+
+[project.scripts]
+nexus-hash = "nexus_hash.__main__:main"
+
+[dependency-groups]
+dev = [
+    "httpx2>=2.10",
+    "mypy>=1.11",
+    "pytest>=8.2",
+    "pytest-cov>=5.0",
+    "ruff>=0.6",
+    "types-psutil>=6.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "nexus_hash/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["nexus_hash"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E", "W", "F", "I", "N", "B", "UP", "S", "SIM", "RUF", "ASYNC", "PT", "RET", "PL",
+]
+ignore = [
+    "PLR0913",  # FastAPI factories legitimately take many keyword arguments
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106", "S311", "PLR2004"]  # S311: seeded RNG for test inputs
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+plugins = ["pydantic.mypy"]
+packages = ["nexus_hash"]
+
+[[tool.mypy.overrides]]
+module = ["pynvml"]  # NVIDIA's binding ships no type information
+ignore_missing_imports = true
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers --strict-config"
+filterwarnings = ["error::DeprecationWarning:nexus_hash.*"]
+
+[tool.coverage.run]
+source = ["nexus_hash"]
+branch = true
+# SQLAlchemy's async engine runs driver code inside greenlets.
+concurrency = ["thread", "greenlet"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
